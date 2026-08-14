@@ -9,57 +9,72 @@
 <div
   class="thumb"
   class:error={photo.status === 'error'}
+  class:selected={photo.selected}
   role="button"
   tabindex="0"
   onclick={() => onOpen(photo.id)}
   onkeydown={(e) => e.key === 'Enter' && onOpen(photo.id)}
 >
-  <input
-    type="checkbox"
-    checked={photo.selected}
-    onclick={(e) => e.stopPropagation()}
-    onchange={() => toggleSelected(photo.id)}
-    aria-label="select"
-  />
   <div class="img">
     {#if photo.thumbUrl}
       <img src={photo.thumbUrl} alt={photo.name} />
     {:else if photo.status === 'error'}
       <div class="placeholder error-text">error</div>
     {:else}
-      <div class="placeholder">processing…</div>
+      <div class="placeholder">developing…</div>
     {/if}
   </div>
-  <div class="name" title={photo.name}>{photo.name}</div>
-  <span class="badge">{photo.sourceType === 'raw' ? 'RAW' : 'JPG'}</span>
+
+  <div class="meta">
+    <span class="name" title={photo.name}>{photo.name}</span>
+    <span class="badge">{photo.sourceType === 'raw' ? 'RAW' : 'JPG'}</span>
+  </div>
+
+  <input
+    type="checkbox"
+    checked={photo.selected}
+    onclick={(e) => e.stopPropagation()}
+    onchange={() => toggleSelected(photo.id)}
+    aria-label={`select ${photo.name}`}
+    class="tick"
+  />
 </div>
 
 <style>
   .thumb {
     position: relative;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: hidden;
     background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
     cursor: pointer;
+    transition:
+      border-color 0.18s ease,
+      box-shadow 0.18s ease,
+      transform 0.18s ease;
   }
   .thumb:hover {
+    border-color: var(--border-strong);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    transform: translateY(-2px);
+  }
+  .thumb.selected {
     border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), 0 8px 24px rgba(0, 0, 0, 0.5);
   }
   .thumb.error {
-    border-color: #b0483f;
+    border-color: var(--danger);
   }
-  .thumb > input {
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    z-index: 2;
-  }
+
   .img {
     aspect-ratio: 4 / 3;
     display: flex;
     align-items: center;
     justify-content: center;
+    background:
+      radial-gradient(circle at center, rgba(255, 122, 69, 0.04), transparent 70%),
+      var(--bg-raise);
+    border-bottom: 1px solid var(--border);
   }
   img {
     width: 100%;
@@ -68,28 +83,58 @@
     display: block;
   }
   .placeholder {
-    color: var(--muted);
-    font-size: 12px;
+    color: var(--faint);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
   }
   .error-text {
-    color: #ffb4ab;
+    color: var(--danger);
+  }
+
+  .meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
   }
   .name {
-    padding: 6px 10px;
     font-size: 12px;
+    color: var(--text);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: var(--muted);
+    min-width: 0;
   }
   .badge {
-    position: absolute;
-    bottom: 6px;
-    right: 8px;
+    flex-shrink: 0;
     font-size: 10px;
-    color: var(--muted);
-    background: var(--bg);
+    letter-spacing: 0.1em;
+    color: var(--accent-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
     padding: 1px 5px;
-    border-radius: 4px;
+  }
+
+  .tick {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    -webkit-appearance: none;
+    appearance: none;
+    border-radius: 50%;
+    background: rgba(13, 11, 9, 0.7);
+    border: 1.5px solid var(--border-strong);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tick:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 10px rgba(255, 122, 69, 0.5);
   }
 </style>

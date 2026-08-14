@@ -108,48 +108,70 @@
 
 <style>
   .shell {
-    max-width: 1080px;
+    max-width: 1120px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 24px 24px 0;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 18px;
   }
   header {
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: space-between;
+    gap: 16px;
+    padding: 6px 0 14px;
+    border-bottom: 1px solid var(--border);
   }
   h1 {
     margin: 0;
-    font-size: 20px;
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text);
+  }
+  h1::after {
+    content: '';
+    display: block;
+    width: 42px;
+    height: 3px;
+    margin-top: 8px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    border-radius: 2px;
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 14px;
   }
   footer {
     position: sticky;
     bottom: 0;
-    padding: 12px 0;
-    background: var(--bg);
+    margin: 0 -24px;
+    padding: 14px 24px;
+    background: rgba(13, 11, 9, 0.86);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--border);
     display: flex;
-    gap: 12px;
+    gap: 14px;
     align-items: center;
   }
   footer button {
     flex: 1;
     padding: 14px;
-    font-size: 15px;
+    font-size: 13px;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 10px;
+  }
+  footer button:not(:disabled) {
+    border-color: var(--accent);
+    background: linear-gradient(180deg, rgba(255, 122, 69, 0.18), rgba(255, 122, 69, 0.06));
   }
   .bar {
-    width: 120px;
-    height: 8px;
+    width: 140px;
+    height: 7px;
     background: var(--border);
     border-radius: 4px;
     overflow: hidden;
@@ -157,7 +179,8 @@
   .fill {
     display: block;
     height: 100%;
-    background: var(--accent);
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    border-radius: 4px;
     transition: width 0.2s ease;
   }
   .fmt {
@@ -165,7 +188,9 @@
     align-items: center;
     gap: 8px;
     color: var(--muted);
-    font-size: 13px;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     white-space: nowrap;
   }
 </style>

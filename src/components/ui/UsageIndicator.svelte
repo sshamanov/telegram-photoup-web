@@ -21,21 +21,25 @@
   .usage {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 13px;
+    gap: 10px;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     color: var(--muted);
-    padding: 6px 0;
+    padding: 4px 0;
   }
   .dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
     background: var(--accent);
-    animation: pulse 1s ease-in-out infinite;
+    box-shadow: 0 0 10px rgba(255, 122, 69, 0.7);
+    animation: pulse 1.4s ease-in-out infinite;
   }
   @keyframes pulse {
     50% {
-      opacity: 0.3;
+      opacity: 0.25;
+      transform: scale(0.8);
     }
   }
 </style>

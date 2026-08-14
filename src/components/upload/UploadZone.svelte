@@ -33,15 +33,28 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    padding: 28px;
-    border: 2px dashed var(--border);
-    border-radius: 12px;
+    gap: 8px;
+    padding: 30px;
+    border: 1.5px dashed var(--border-strong);
+    border-radius: var(--radius-lg);
     cursor: pointer;
     text-align: center;
     color: var(--muted);
+    transition: border-color 0.18s ease, background 0.18s ease;
   }
   .zone:hover {
     border-color: var(--accent);
+    background: rgba(255, 122, 69, 0.04);
+  }
+  .zone strong {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text);
+    letter-spacing: 0.01em;
+  }
+  .zone span {
+    font-size: 12px;
+    letter-spacing: 0.04em;
   }
 </style>

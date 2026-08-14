@@ -179,58 +179,75 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(6, 5, 4, 0.78);
+    backdrop-filter: blur(6px);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 100;
+    padding: 20px;
   }
   .panel {
     background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    width: min(920px, 92vw);
-    max-height: 92vh;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    width: min(940px, 94vw);
+    max-height: 94vh;
     overflow: auto;
-    padding: 16px;
+    padding: 20px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 18px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
   }
   header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 12px;
+  }
+  header strong {
+    font-weight: 500;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .preview {
     position: relative;
-    background: #000;
-    border-radius: 8px;
+    background: var(--bg-raise);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     overflow: hidden;
     display: flex;
     justify-content: center;
-    max-height: 60vh;
+    max-height: 62vh;
     user-select: none;
   }
   .preview img {
     max-width: 100%;
-    max-height: 60vh;
+    max-height: 62vh;
     object-fit: contain;
     display: block;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
   }
   .preview.crop-mode {
     cursor: crosshair;
   }
   .crop-box {
     position: absolute;
-    border: 1px solid var(--accent);
-    background: rgba(76, 141, 255, 0.15);
+    border: 1.5px solid var(--accent);
+    background: rgba(255, 122, 69, 0.12);
+    box-shadow: 0 0 0 9999px rgba(6, 5, 4, 0.45);
     pointer-events: none;
   }
   .controls {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
+    padding-top: 2px;
   }
   .row {
     display: flex;
@@ -239,14 +256,19 @@
   }
   .row .active {
     border-color: var(--accent);
-    background: rgba(76, 141, 255, 0.15);
+    background: rgba(255, 122, 69, 0.14);
+    color: var(--accent-2);
   }
   .ev {
     margin-left: auto;
     font-variant-numeric: tabular-nums;
+    font-size: 15px;
+    color: var(--accent-2);
+    letter-spacing: 0.02em;
   }
   .hint {
-    color: var(--muted);
-    font-size: 12px;
+    color: var(--faint);
+    font-size: 11px;
+    letter-spacing: 0.04em;
   }
 </style>

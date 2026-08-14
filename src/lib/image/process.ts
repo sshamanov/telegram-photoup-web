@@ -1,7 +1,7 @@
-import type { Adjustments, SourceType, WbGains } from './types'
+import type { Adjustments, NormalizedCrop, SourceType, WbGains } from './types'
 import { clamp, fitWithin, cropToPixels, autoExposureEV } from './math'
 import { decodeRaw } from './raw'
-import { encode as encodeJpeg444 } from '@jsquash/jpeg'
+import { encodeJpeg444InWorker } from './encode'
 
 const SRGB_TO_LINEAR = (() => {
   const lut = new Float32Array(256)
@@ -90,92 +90,112 @@ async function encodeThumbnail(canvas: OffscreenCanvas): Promise<Blob> {
 async function encodeExport(canvas: OffscreenCanvas): Promise<Blob> {
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-  const buffer = await encodeJpeg444(imageData, {
-    quality: 100,
-    chroma_subsample: 1,
-    auto_subsample: false,
-  })
-  return new Blob([buffer], { type: 'image/jpeg' })
+  return encodeJpeg444InWorker(imageData, { quality: 100, chroma: 1 })
 }
 
-export interface ProcessedImage {
-  thumbnailBlob: Blob
-  outputBlob: Blob
+export interface Rect {
+  x: number
+  y: number
   width: number
   height: number
+}
+
+export interface Size {
+  width: number
+  height: number
+}
+
+export interface RenderedResult {
+  canvas: OffscreenCanvas
   autoEV: number
 }
 
-export interface ProcessOptions {
-  thumbEdge?: number
-  exportEdge?: number
+/**
+ * A decoded source, ready to render at any size. Renders the (cropped) region
+ * at `size`, applying exposure/WB/rolloff, and returns an sRGB 8-bit canvas plus
+ * the auto-exposure EV it would use. Held outside the reactive store; released
+ * when no longer needed (see `dispose`).
+ */
+export interface DecodedBase {
+  readonly width: number
+  readonly height: number
+  render(crop: Rect, size: Size, adjustments: Adjustments): Promise<RenderedResult>
+  dispose(): void
 }
 
-async function processDecoded(
-  source: CanvasImageSource,
-  srcWidth: number,
-  srcHeight: number,
+export function cropRect(width: number, height: number, crop: NormalizedCrop | null): Rect {
+  return crop ? cropToPixels(crop, width, height) : { x: 0, y: 0, width, height }
+}
+
+/** The size the export would be rendered at, for display purposes. */
+export function exportDimensions(
+  base: DecodedBase,
   adjustments: Adjustments,
-  opts: ProcessOptions,
-  maxAutoEV: number,
-): Promise<ProcessedImage> {
-  const { thumbEdge = 512, exportEdge = 2560 } = opts
-  const crop = adjustments.crop
-    ? cropToPixels(adjustments.crop, srcWidth, srcHeight)
-    : { x: 0, y: 0, width: srcWidth, height: srcHeight }
+  exportEdge = 2560,
+): Size {
+  const rect = cropRect(base.width, base.height, adjustments.crop)
+  return fitWithin(rect.width, rect.height, exportEdge)
+}
 
-  const luminances = sampleLuminances(source, crop)
-  const autoEV = autoExposureEV(luminances, { maxEV: maxAutoEV })
-  const ev = adjustments.exposureMode === 'auto' ? autoEV : adjustments.exposureEV
+class CanvasBase implements DecodedBase {
+  readonly width: number
+  readonly height: number
 
-  const exportSize = fitWithin(crop.width, crop.height, exportEdge)
-  const exportCanvas = await renderCanvas(source, crop, exportSize, ev, adjustments)
-  const outputBlob = await encodeExport(exportCanvas)
+  constructor(
+    private readonly source: CanvasImageSource,
+    width: number,
+    height: number,
+    private readonly closeOnDispose: boolean,
+  ) {
+    this.width = width
+    this.height = height
+  }
 
-  const thumbSize = fitWithin(crop.width, crop.height, thumbEdge)
-  const thumbCanvas = await renderCanvas(source, crop, thumbSize, ev, adjustments)
-  const thumbnailBlob = await encodeThumbnail(thumbCanvas)
+  async render(crop: Rect, size: Size, adjustments: Adjustments): Promise<RenderedResult> {
+    const luminances = sampleLuminances(this.source, crop)
+    const autoEV = autoExposureEV(luminances, { maxEV: 4 })
+    const ev = adjustments.exposureMode === 'auto' ? autoEV : adjustments.exposureEV
+    const canvas = await renderCanvas(this.source, crop, size, ev, adjustments)
+    return { canvas, autoEV }
+  }
 
-  return {
-    thumbnailBlob,
-    outputBlob,
-    width: exportSize.width,
-    height: exportSize.height,
-    autoEV,
+  dispose(): void {
+    if (this.closeOnDispose && this.source instanceof ImageBitmap) this.source.close()
   }
 }
 
-export async function processJpeg(
-  buffer: ArrayBuffer,
-  adjustments: Adjustments,
-  opts: ProcessOptions = {},
-): Promise<ProcessedImage> {
+export async function decodeBase(buffer: ArrayBuffer, sourceType: SourceType): Promise<DecodedBase> {
+  if (sourceType === 'raw') {
+    const decoded = await decodeRaw(buffer)
+    const canvas = new OffscreenCanvas(decoded.width, decoded.height)
+    const ctx = canvas.getContext('2d')!
+    ctx.putImageData(new ImageData(decoded.rgba, decoded.width, decoded.height), 0, 0)
+    return new CanvasBase(canvas, decoded.width, decoded.height, false)
+  }
+
   const bitmap = await createImageBitmap(new Blob([buffer]))
-  try {
-    // JPEG needs up to +4 EV for the dark samples (measured: +3.2 to +4.0 EV)
-    return await processDecoded(bitmap, bitmap.width, bitmap.height, adjustments, opts, 4)
-  } finally {
-    bitmap.close()
-  }
+  return new CanvasBase(bitmap, bitmap.width, bitmap.height, true)
 }
 
-export async function processRaw(
-  buffer: ArrayBuffer,
+export async function renderThumb(
+  base: DecodedBase,
   adjustments: Adjustments,
-  opts: ProcessOptions = {},
-): Promise<ProcessedImage> {
-  const decoded = await decodeRaw(buffer)
-  const canvas = new OffscreenCanvas(decoded.width, decoded.height)
-  const ctx = canvas.getContext('2d')!
-  ctx.putImageData(new ImageData(decoded.rgba, decoded.width, decoded.height), 0, 0)
-  return processDecoded(canvas, decoded.width, decoded.height, adjustments, opts, 4)
+  thumbEdge = 512,
+): Promise<{ blob: Blob; autoEV: number; width: number; height: number }> {
+  const rect = cropRect(base.width, base.height, adjustments.crop)
+  const size = fitWithin(rect.width, rect.height, thumbEdge)
+  const { canvas, autoEV } = await base.render(rect, size, adjustments)
+  const blob = await encodeThumbnail(canvas)
+  return { blob, autoEV, width: size.width, height: size.height }
 }
 
-export async function processImage(
-  buffer: ArrayBuffer,
-  sourceType: SourceType,
+export async function renderExport(
+  base: DecodedBase,
   adjustments: Adjustments,
-  opts: ProcessOptions = {},
-): Promise<ProcessedImage> {
-  return sourceType === 'raw' ? processRaw(buffer, adjustments, opts) : processJpeg(buffer, adjustments, opts)
+  exportEdge = 2560,
+): Promise<Blob> {
+  const rect = cropRect(base.width, base.height, adjustments.crop)
+  const size = fitWithin(rect.width, rect.height, exportEdge)
+  const { canvas } = await base.render(rect, size, adjustments)
+  return encodeExport(canvas)
 }

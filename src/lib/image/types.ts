@@ -36,29 +36,3 @@ export const neutralAdjustments: Adjustments = {
 }
 
 export type ProcessStatus = 'queued' | 'processing' | 'ready' | 'error'
-
-export interface ProcessRequest {
-  id: string
-  fileName: string
-  sourceType: SourceType
-  /** The source file bytes (JPEG/PNG or RAW). */
-  buffer: ArrayBuffer
-  adjustments: Adjustments
-}
-
-export interface ProcessResult {
-  id: string
-  thumbnailBlob: Blob
-  outputBlob: Blob
-  width: number
-  height: number
-  autoEV: number
-  status: 'ready'
-  error?: undefined
-}
-
-export interface ProcessError {
-  id: string
-  status: 'error'
-  error: string
-}

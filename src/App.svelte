@@ -1,6 +1,6 @@
 <script lang="ts">
   import { authState, getCurrentAdapter } from './stores/telegram'
-  import { photos, clearPhotos } from './stores/photos'
+  import { photos, clearPhotos, renderExports, ensureBase, releaseBase } from './stores/photos'
   import { settings } from './stores/settings'
   import { pushToast } from './stores/ui'
   import AuthScreen from './components/auth/AuthScreen.svelte'
@@ -16,11 +16,17 @@
   let sending = false
   let sendProgress = 0
 
-  $: selectedPhotos = $photos.filter((p) => p.selected && p.status === 'ready' && p.outputBlob)
+  $: selectedPhotos = $photos.filter((p) => p.selected && p.status === 'ready')
   $: editingPhoto = $photos.find((p) => p.id === editingId) ?? null
 
-  function toJpgName(base: string): string {
-    return base.replace(/\.[^.]+$/, '') + '.jpg'
+  function openEditor(id: string): void {
+    editingId = id
+    void ensureBase(id)
+  }
+
+  function closeEditor(): void {
+    if (editingId) releaseBase(editingId)
+    editingId = null
   }
 
   async function send(): Promise<void> {
@@ -34,9 +40,8 @@
       return
     }
 
-    const payload: UploadPhoto[] = selectedPhotos.flatMap((p) =>
-      p.outputBlob ? [{ file: p.outputBlob, fileName: toJpgName(p.name) }] : [],
-    )
+    const ids = selectedPhotos.map((p) => p.id)
+    const payload: UploadPhoto[] = await renderExports(ids)
 
     sending = true
     sendProgress = 0
@@ -69,7 +74,7 @@
     {#if $photos.length > 0}
       <div class="grid">
         {#each $photos as photo (photo.id)}
-          <PhotoThumb {photo} onOpen={(id) => (editingId = id)} />
+          <PhotoThumb {photo} onOpen={openEditor} />
         {/each}
       </div>
     {/if}
@@ -90,7 +95,7 @@
 {/if}
 
 {#if editingPhoto}
-  <EditorPanel photo={editingPhoto} onClose={() => (editingId = null)} />
+  <EditorPanel photo={editingPhoto} onClose={closeEditor} />
 {/if}
 
 <style>

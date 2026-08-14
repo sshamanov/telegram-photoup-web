@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image (static bundle)
+        run: docker build -t photoup .
+
+      - name: Type-check in Docker
+        run: docker run --rm -v "$PWD":/app -w /app node:20-alpine sh -c "npm install && npm run check"
+
+      - name: Unit tests in Docker
+        run: docker run --rm -v "$PWD":/app -w /app node:20-alpine sh -c "npm install && npm run test:unit"
+
+      - name: UI tests in Docker (mock adapter)
+        run: docker compose run --rm playwright

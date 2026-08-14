@@ -1,6 +1,6 @@
 <script lang="ts">
   import { authState, getCurrentAdapter } from './stores/telegram'
-  import { photos, clearPhotos } from './stores/photos'
+  import { photos, clearPhotos, reprocessAll } from './stores/photos'
   import { settings } from './stores/settings'
   import { pushToast } from './stores/ui'
   import AuthScreen from './components/auth/AuthScreen.svelte'
@@ -14,8 +14,7 @@
 
   let editingId: string | null = null
   let sending = false
-  let sentCount = 0
-  let sendTotal = 0
+  let sendProgress = 0
 
   $: selectedPhotos = $photos.filter((p) => p.selected && p.status === 'ready' && p.outputBlob)
   $: editingPhoto = $photos.find((p) => p.id === editingId) ?? null
@@ -40,11 +39,10 @@
     )
 
     sending = true
-    sentCount = 0
-    sendTotal = payload.length
+    sendProgress = 0
     try {
-      await getCurrentAdapter().sendPhotos(groupId, payload, (done) => {
-        sentCount = done
+      await getCurrentAdapter().sendPhotos(groupId, payload, (progress) => {
+        sendProgress = progress
       })
       pushToast('info', `Sent ${payload.length} photo(s)`)
       clearPhotos()
@@ -79,13 +77,24 @@
     <footer>
       <label class="fmt">
         Upload as
-        <select value={$settings.format} onchange={(e) => settings.set({ ...$settings, format: e.currentTarget.value === 'png' ? 'png' : 'jpeg' })}>
+        <select
+          value={$settings.format}
+          onchange={(e) => {
+            settings.set({ ...$settings, format: e.currentTarget.value === 'png' ? 'png' : 'jpeg' })
+            reprocessAll()
+          }}
+        >
           <option value="jpeg">JPEG 4:4:4 (Q100)</option>
           <option value="png">PNG (lossless)</option>
         </select>
       </label>
       <button onclick={send} disabled={sending || selectedPhotos.length === 0}>
-        {sending ? `Sending ${sentCount}/${sendTotal}…` : `Send ${selectedPhotos.length} selected`}
+        {#if sending}
+          <span class="bar"><span class="fill" style="width:{Math.round(sendProgress * 100)}%"></span></span>
+          <span>Sending {Math.round(sendProgress * 100)}%</span>
+        {:else}
+          Send {selectedPhotos.length} selected
+        {/if}
       </button>
     </footer>
   </main>
@@ -133,6 +142,23 @@
     flex: 1;
     padding: 14px;
     font-size: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .bar {
+    width: 120px;
+    height: 8px;
+    background: var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .fill {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.2s ease;
   }
   .fmt {
     display: flex;

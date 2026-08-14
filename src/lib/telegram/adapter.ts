@@ -9,7 +9,7 @@ export interface TelegramAdapter {
   logout(): Promise<void>
   getSession(): string | null
   getDialogs(opts?: { limit?: number }): Promise<Dialog[]>
-  sendPhotos(dialogId: string, photos: UploadPhoto[], onProgress?: (completed: number, total: number) => void): Promise<void>
+  sendPhotos(dialogId: string, photos: UploadPhoto[], onProgress?: (progress: number) => void): Promise<void>
 }
 
 let currentAdapter: TelegramAdapter | null = null

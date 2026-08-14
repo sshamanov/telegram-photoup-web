@@ -5,6 +5,7 @@ import { processInWorker } from '../lib/image/queue'
 import { processRaw, type ProcessedImage } from '../lib/image/process'
 import { pushToast } from './ui'
 import { settings } from './settings'
+import { debugLog } from '../lib/debug'
 
 export interface Photo {
   id: string
@@ -59,6 +60,13 @@ async function processOne(id: string): Promise<void> {
   try {
     const buffer = await item.file.arrayBuffer()
     const format = get(settings).format
+    debugLog('process', {
+      id: item.id,
+      type: item.sourceType,
+      crop: item.adjustments.crop,
+      ev: item.adjustments.exposureEV,
+      mode: item.adjustments.exposureMode,
+    })
 
     // RAW decode runs on the main thread: libraw-wasm spawns its own worker, and
     // its WASM does not initialize correctly inside a nested worker. JPEG uses our worker.
@@ -97,7 +105,7 @@ export function addPhotos(files: File[]): void {
     sourceType: detectSourceType(file),
     status: 'queued' as ProcessStatus,
     selected: true,
-    adjustments: { ...neutralAdjustments },
+    adjustments: { ...neutralAdjustments, exposureMode: 'auto' },
     thumbUrl: null,
     outputBlob: null,
     width: 0,
@@ -132,4 +140,13 @@ export function clearPhotos(): void {
     if (p.thumbUrl) URL.revokeObjectURL(p.thumbUrl)
   }
   photos.set([])
+}
+
+/** Re-encode every finished photo with the current export format (called when format changes). */
+export function reprocessAll(): void {
+  for (const p of get(photos)) {
+    if (p.status === 'ready' || p.status === 'error') {
+      enqueue(p.id)
+    }
+  }
 }

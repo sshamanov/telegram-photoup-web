@@ -44,9 +44,9 @@ export class MockTelegramAdapter implements TelegramAdapter {
     return mockDialogs
   }
 
-  async sendPhotos(dialogId: string, photos: UploadPhoto[], onProgress?: (completed: number, total: number) => void): Promise<void> {
+  async sendPhotos(dialogId: string, photos: UploadPhoto[], onProgress?: (progress: number) => void): Promise<void> {
     this.uploads.push({ dialogId, fileName: photos.map((p) => p.fileName) })
-    onProgress?.(photos.length, photos.length)
+    onProgress?.(1)
   }
 }
 

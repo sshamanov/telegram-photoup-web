@@ -110,16 +110,19 @@ class MtcuteTelegramAdapter implements TelegramAdapter {
         abortSignal: this.qrAbortController.signal,
         onUrlUpdated: (url, expires) => {
           events.push({ token: url, expires: expires.getTime() })
+          debugLog('qr:token', { expires: expires.getTime() })
           notify?.()
         },
         password: onPasswordRequired,
       })
       .then(async () => {
+        debugLog('qr:resolved')
         await this.exportSession()
         finished = true
         notify?.()
       })
       .catch((error: unknown) => {
+        debugLog('qr:rejected', error)
         if (this.qrAbortController?.signal.aborted) {
           finished = true
         } else {
@@ -186,7 +189,7 @@ class MtcuteTelegramAdapter implements TelegramAdapter {
   async sendPhotos(
     dialogId: string,
     photos: UploadPhoto[],
-    onProgress?: (completed: number, total: number) => void,
+    onProgress?: (progress: number) => void,
   ): Promise<void> {
     const client = this.getClient()
     const chatId = dialogId === 'me' ? 'me' : Number(dialogId)
@@ -204,10 +207,10 @@ class MtcuteTelegramAdapter implements TelegramAdapter {
     if (media.length === 1) {
       await client.sendMedia(chatId, media[0]!, {
         progressCallback: (uploaded, total) => {
-          onProgress?.(total > 0 ? Math.min(uploaded / total, 1) : 0, 1)
+          onProgress?.(total > 0 ? Math.min(uploaded / total, 1) : 1)
         },
       })
-      onProgress?.(1, 1)
+      onProgress?.(1)
       return
     }
 
@@ -215,10 +218,10 @@ class MtcuteTelegramAdapter implements TelegramAdapter {
     await client.sendMediaGroup(chatId, media, {
       progressCallback: (index, uploaded, total) => {
         if (total > 0 && uploaded >= total) done.add(index)
-        onProgress?.(done.size, media.length)
+        onProgress?.(done.size / media.length)
       },
     })
-    onProgress?.(media.length, media.length)
+    onProgress?.(1)
   }
 }
 

@@ -28,8 +28,9 @@ export interface Adjustments {
   crop: NormalizedCrop | null
 }
 
+/** "Reset" baseline: 0 EV (manual), camera WB, no crop. */
 export const neutralAdjustments: Adjustments = {
-  exposureMode: 'auto',
+  exposureMode: 'manual',
   exposureEV: 0,
   temperature: 0,
   neutralGains: null,

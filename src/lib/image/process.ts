@@ -55,7 +55,7 @@ function sampleLuminances(
   const w = Math.max(1, Math.round(crop.width * scale))
   const h = Math.max(1, Math.round(crop.height * scale))
   const canvas = new OffscreenCanvas(w, h)
-  const ctx = canvas.getContext('2d')!
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
   ctx.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, w, h)
   const data = ctx.getImageData(0, 0, w, h).data
   const lums = new Uint8Array(w * h)
@@ -73,7 +73,7 @@ async function renderCanvas(
   adjustments: Adjustments,
 ): Promise<OffscreenCanvas> {
   const canvas = new OffscreenCanvas(size.width, size.height)
-  const ctx = canvas.getContext('2d')!
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
   ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, size.width, size.height)
   const imageData = ctx.getImageData(0, 0, size.width, size.height)
@@ -92,7 +92,7 @@ async function encodeExport(canvas: OffscreenCanvas, format: ExportFormat, quali
   }
   // 4:4:4 chroma JPEG (no subsampling) via mozjpeg — avoids the browser's 4:2:0 encoder.
   // chroma_subsample: 1 == 4:4:4 (1x1,1x1,1x1); 0 crashes mozjpeg's libjpeg.
-  const ctx = canvas.getContext('2d')!
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const buffer = await encodeJpeg444(imageData, {
     quality: Math.round(clamp(quality, 0, 1) * 100),
@@ -158,7 +158,8 @@ export async function processJpeg(
 ): Promise<ProcessedImage> {
   const bitmap = await createImageBitmap(new Blob([buffer]))
   try {
-    return await processDecoded(bitmap, bitmap.width, bitmap.height, adjustments, opts, 2)
+    // JPEG needs up to +4 EV for the dark samples (measured: +3.2 to +4.0 EV)
+    return await processDecoded(bitmap, bitmap.width, bitmap.height, adjustments, opts, 4)
   } finally {
     bitmap.close()
   }

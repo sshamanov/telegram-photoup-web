@@ -61,6 +61,8 @@
   }
 
   function applyCrop(): void {
+    // eslint-disable-next-line no-console
+    console.log('[photoup:crop] apply', draftCrop)
     if (draftCrop && draftCrop.width > 0.02 && draftCrop.height > 0.02) {
       updateAdjustments(photo.id, { crop: draftCrop })
     }

@@ -11,6 +11,9 @@
   let need2fa = false
   let qrDataUrl: string | null = null
   let busy = false
+  let needQrPassword = false
+  let qrPassword = ''
+  let qrPasswordResolver: ((p: string) => void) | null = null
 
   function messageOf(error: unknown): string {
     return error instanceof Error ? error.message : String(error)
@@ -69,12 +72,28 @@
     }
   }
 
+  function promptQrPassword(): Promise<string> {
+    needQrPassword = true
+    qrPassword = ''
+    return new Promise((resolve) => {
+      qrPasswordResolver = resolve
+    })
+  }
+
+  function submitQrPassword(): void {
+    needQrPassword = false
+    const resolve = qrPasswordResolver
+    qrPasswordResolver = null
+    resolve?.(qrPassword)
+  }
+
   async function startQr(): Promise<void> {
     mode = 'qr'
     qrDataUrl = null
+    needQrPassword = false
     busy = true
     try {
-      for await (const { token } of getCurrentAdapter().startQRLogin(async () => password)) {
+      for await (const { token } of getCurrentAdapter().startQRLogin(() => promptQrPassword())) {
         qrDataUrl = await QRCode.toDataURL(token, { width: 256 })
       }
       authState.set('connected')
@@ -106,6 +125,10 @@
   {:else if qrDataUrl}
     <img src={qrDataUrl} alt="Telegram QR login" />
     <p class="muted">Scan with Telegram on your phone</p>
+    {#if needQrPassword}
+      <input type="password" placeholder="2FA password" bind:value={qrPassword} />
+      <button on:click={submitQrPassword} disabled={!qrPassword}>Confirm 2FA</button>
+    {/if}
   {/if}
 </div>
 

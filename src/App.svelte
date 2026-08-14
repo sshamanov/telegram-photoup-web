@@ -25,6 +25,13 @@
     return `${stem}_${variant}${ext}`
   }
 
+  function variantCaption(name: string): string {
+    if (name === 'png') return 'PNG (lossless)'
+    const m = /^jpeg(444|420)-q(\d+)$/.exec(name)
+    if (m) return `JPEG ${m[1] === '444' ? '4:4:4' : '4:2:0'} Q${m[2]}`
+    return name
+  }
+
   async function send(): Promise<void> {
     const groupId = $settings.targetGroupId
     if (!groupId) {
@@ -37,21 +44,19 @@
     }
 
     const payload: UploadPhoto[] = selectedPhotos.flatMap((p) =>
-      p.outputs.map((v) => ({ file: v.blob, fileName: toVariantName(p.name, v.name) })),
+      p.outputs.map((v) => ({
+        file: v.blob,
+        fileName: toVariantName(p.name, v.name),
+        caption: variantCaption(v.name),
+      })),
     )
 
     sending = true
     sendProgress = 0
     try {
-      const CHUNK = 10
-      let sent = 0
-      for (let i = 0; i < payload.length; i += CHUNK) {
-        const chunk = payload.slice(i, i + CHUNK)
-        await getCurrentAdapter().sendPhotos(groupId, chunk, (progress) => {
-          sendProgress = (sent + progress * chunk.length) / payload.length
-        })
-        sent += chunk.length
-      }
+      await getCurrentAdapter().sendPhotos(groupId, payload, (progress) => {
+        sendProgress = progress
+      })
       pushToast('info', `Sent ${payload.length} variants`)
       clearPhotos()
     } catch (error) {

@@ -11,6 +11,7 @@ export interface Dialog {
 export interface UploadPhoto {
   file: Blob
   fileName: string
+  caption?: string
 }
 
 export interface SessionSnapshot {

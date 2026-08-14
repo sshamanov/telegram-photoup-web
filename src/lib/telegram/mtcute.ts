@@ -194,34 +194,26 @@ class MtcuteTelegramAdapter implements TelegramAdapter {
     const client = this.getClient()
     const chatId = dialogId === 'me' ? 'me' : Number(dialogId)
 
-    const media = photos.map((photo) => ({
-      type: 'photo' as const,
-      file: new File([photo.file], photo.fileName, { type: 'image/jpeg' }),
-      fileName: photo.fileName,
-      fileMime: 'image/jpeg',
-      fileSize: photo.file.size,
-    }))
-
-    if (media.length === 0) return
-
-    if (media.length === 1) {
-      await client.sendMedia(chatId, media[0]!, {
-        progressCallback: (uploaded, total) => {
-          onProgress?.(total > 0 ? Math.min(uploaded / total, 1) : 1)
+    for (let i = 0; i < photos.length; i++) {
+      const photo = photos[i]!
+      await client.sendMedia(
+        chatId,
+        {
+          type: 'photo',
+          file: new File([photo.file], photo.fileName, { type: 'image/jpeg' }),
+          fileName: photo.fileName,
+          fileMime: 'image/jpeg',
+          fileSize: photo.file.size,
         },
-      })
-      onProgress?.(1)
-      return
+        {
+          caption: photo.caption,
+          progressCallback: (uploaded, total) => {
+            onProgress?.((i + (total > 0 ? uploaded / total : 1)) / photos.length)
+          },
+        },
+      )
+      onProgress?.((i + 1) / photos.length)
     }
-
-    const done = new Set<number>()
-    await client.sendMediaGroup(chatId, media, {
-      progressCallback: (index, uploaded, total) => {
-        if (total > 0 && uploaded >= total) done.add(index)
-        onProgress?.(done.size / media.length)
-      },
-    })
-    onProgress?.(1)
   }
 }
 

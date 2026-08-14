@@ -5,29 +5,36 @@
   export let step = 0.01
   export let value: number
   export let display: string | null = null
+  export let zero: number | null = null
   export let onChange: (v: number) => void = () => {}
 
   $: pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))
+  $: zeroPct = zero === null ? null : Math.min(100, Math.max(0, ((zero - min) / (max - min)) * 100))
 </script>
 
 <label class="slider">
   <span class="label">{label}</span>
-  <input
-    type="range"
-    {min}
-    {max}
-    {step}
-    {value}
-    style={`--pct:${pct}%`}
-    oninput={(e) => onChange(Number(e.currentTarget.value))}
-  />
+  <span class="track">
+    <input
+      type="range"
+      {min}
+      {max}
+      {step}
+      {value}
+      style={`--pct:${pct}%`}
+      oninput={(e) => onChange(Number(e.currentTarget.value))}
+    />
+    {#if zeroPct !== null}
+      <span class="zero" style={`left:${zeroPct}%`}></span>
+    {/if}
+  </span>
   <span class="value">{display ?? value.toFixed(2)}</span>
 </label>
 
 <style>
   .slider {
     display: grid;
-    grid-template-columns: 100px 1fr 88px;
+    grid-template-columns: 96px 1fr 96px;
     align-items: center;
     gap: 16px;
   }
@@ -37,15 +44,42 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
+  .track {
+    position: relative;
+    display: block;
+    height: 22px;
+  }
   .value {
     text-align: right;
     color: var(--accent-2);
     font-variant-numeric: tabular-nums;
     font-size: 13px;
+    white-space: nowrap;
+  }
+  .zero {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    width: 2px;
+    background: var(--muted);
+    pointer-events: none;
+  }
+  .zero::after {
+    content: '0';
+    position: absolute;
+    left: 50%;
+    top: 100%;
+    transform: translateX(-50%);
+    margin-top: 2px;
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 0;
   }
   input[type='range'] {
     -webkit-appearance: none;
     appearance: none;
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 22px;
     margin: 0;

@@ -141,11 +141,19 @@
     <div class="controls">
       <div class="row">
         <button onclick={reset}>Reset</button>
-        <button onclick={autoExposure}>Auto</button>
-        <span class="ev">EV {shownEV >= 0 ? '+' : ''}{shownEV.toFixed(2)}</span>
+        <button class:active={photo.adjustments.exposureMode === 'auto'} onclick={autoExposure}>Auto</button>
       </div>
 
-      <Slider label="Exposure" min={-3} max={5} step={0.1} value={shownEV} onChange={setExposure} />
+      <Slider
+        label="Exposure"
+        min={-3}
+        max={5}
+        step={0.1}
+        value={shownEV}
+        display={`${shownEV >= 0 ? '+' : ''}${shownEV.toFixed(2)} EV`}
+        zero={0}
+        onChange={setExposure}
+      />
 
       {#if isRaw}
         <Slider
@@ -256,15 +264,9 @@
   }
   .row .active {
     border-color: var(--accent);
-    background: rgba(255, 122, 69, 0.14);
-    color: var(--accent-2);
-  }
-  .ev {
-    margin-left: auto;
-    font-variant-numeric: tabular-nums;
-    font-size: 15px;
-    color: var(--accent-2);
-    letter-spacing: 0.02em;
+    background: var(--accent);
+    color: var(--accent-ink);
+    box-shadow: 0 0 14px rgba(255, 122, 69, 0.35);
   }
   .hint {
     color: var(--faint);

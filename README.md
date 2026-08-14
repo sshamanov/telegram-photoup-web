@@ -43,8 +43,8 @@ sensor recorded full color. photoup:
 |-------------|------|
 | UI          | Svelte 5 + TypeScript (strict) + Vite |
 | Telegram    | `@mtcute/web` (MTProto client), behind an adapter |
-| RAW decode  | `dcraw-wasm` / `libraw-wasm` (RAW → 16-bit RGB) — spike pending |
-| Processing  | Browser canvas + Web Worker (exposure/WB/tone/resize/encode) |
+| RAW decode  | `libraw-wasm` (LibRaw WASM → camera-WB 16-bit RGB) |
+| Processing  | Browser canvas + Web Worker + `@jsquash/jpeg` (4:4:4 mozjpeg) |
 | Persistence | `localStorage` (session + settings) |
 | Build/dev   | Docker (`node:20-alpine`, `--network host`) |
 | Tests       | Playwright + mock Telegram adapter |
@@ -85,15 +85,15 @@ src/App.svelte      root
 
 ## Status
 
-Working end-to-end for JPEG/PNG: upload → auto-exposure → editor (exposure,
+Working end-to-end for JPEG/PNG/RAW: upload → auto-exposure → editor (exposure,
 crop; RAW: temperature + neutral picker) → album send, with Telegram behind a
 mock adapter for tests.
 
+- **RAW decode**: `libraw-wasm` decodes NEF/CR2 to camera-WB 16-bit RGB
+  (verified against the D810 NEF and Canon CR2 samples).
+- **Export**: 4:4:4 JPEG (mozjpeg, `chroma_subsample: 1`) or lossless PNG.
+
 Deferred:
-- **RAW decode** (NEF/CR2) — the LibRaw-WASM decoder is not yet wired; RAW files
-  currently report a decode error.
-- **4:4:4 JPEG encoder** — browser encoding is 4:2:0; an explicit encoder is
-  needed before the PNG-vs-4:4:4 comparison.
 - **Real-Telegram upload test** (PNG vs JPEG 4:4:4 round-trip) — needs a live
   session (or a test bot).
 

@@ -1,6 +1,7 @@
-import type { Adjustments, NormalizedCrop, SourceType, WbGains } from './types'
+import type { Adjustments, NormalizedCrop, Rect, Size, SourceType, WbGains } from './types'
 import { clamp, fitWithin, cropToPixels, autoExposureEV } from './math'
-import { decodeRaw } from './raw'
+import { decodeRaw, type DecodedRaw } from './raw'
+import { downscalePlane, downscaleCrop } from './resize'
 import { encodeJpeg444InWorker } from './encode'
 
 const SRGB_TO_LINEAR = (() => {
@@ -27,16 +28,16 @@ function highlightRolloff(x: number): number {
   return knee + softness * (1 - Math.exp(-t))
 }
 
-function applyPixelTransform(data: Uint8ClampedArray, ev: number, adjustments: Adjustments): void {
+function gainCoefficients(ev: number, adjustments: Adjustments): { r: number; g: number; b: number } {
   const gain = Math.pow(2, ev)
   const wb: WbGains = adjustments.neutralGains ?? { r: 1, g: 1, b: 1 }
-  const temp = adjustments.temperature
-  const tempR = Math.pow(2, temp * 0.15)
-  const tempB = Math.pow(2, -temp * 0.15)
-  const gainR = gain * wb.r * tempR
-  const gainG = gain * wb.g
-  const gainB = gain * wb.b * tempB
+  const tempR = Math.pow(2, adjustments.temperature * 0.15)
+  const tempB = Math.pow(2, -adjustments.temperature * 0.15)
+  return { r: gain * wb.r * tempR, g: gain * wb.g, b: gain * wb.b * tempB }
+}
 
+function applyPixelTransform(data: Uint8ClampedArray, ev: number, adjustments: Adjustments): void {
+  const { r: gainR, g: gainG, b: gainB } = gainCoefficients(ev, adjustments)
   for (let i = 0; i < data.length; i += 4) {
     const r = SRGB_TO_LINEAR[data[i]!]!
     const g = SRGB_TO_LINEAR[data[i + 1]!]!
@@ -44,6 +45,24 @@ function applyPixelTransform(data: Uint8ClampedArray, ev: number, adjustments: A
     data[i] = linearToSrgbByte(highlightRolloff(r * gainR))
     data[i + 1] = linearToSrgbByte(highlightRolloff(g * gainG))
     data[i + 2] = linearToSrgbByte(highlightRolloff(b * gainB))
+  }
+}
+
+function applyLinearTransform(
+  r: Float32Array,
+  g: Float32Array,
+  b: Float32Array,
+  ev: number,
+  adjustments: Adjustments,
+  out: Uint8ClampedArray,
+): void {
+  const { r: gainR, g: gainG, b: gainB } = gainCoefficients(ev, adjustments)
+  for (let i = 0; i < r.length; i++) {
+    const o = i * 4
+    out[o] = linearToSrgbByte(highlightRolloff(r[i]! * gainR))
+    out[o + 1] = linearToSrgbByte(highlightRolloff(g[i]! * gainG))
+    out[o + 2] = linearToSrgbByte(highlightRolloff(b[i]! * gainB))
+    out[o + 3] = 255
   }
 }
 
@@ -93,33 +112,20 @@ async function encodeExport(canvas: OffscreenCanvas): Promise<Blob> {
   return encodeJpeg444InWorker(imageData, { quality: 100, chroma: 1 })
 }
 
-export interface Rect {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
-export interface Size {
-  width: number
-  height: number
-}
-
 export interface RenderedResult {
   canvas: OffscreenCanvas
   autoEV: number
 }
 
 /**
- * A decoded source, ready to render at any size. Renders the (cropped) region
- * at `size`, applying exposure/WB/rolloff, and returns an sRGB 8-bit canvas plus
- * the auto-exposure EV it would use. Held outside the reactive store; released
- * when no longer needed (see `dispose`).
+ * A decoded source, ready to render at any size. `render` applies exposure/WB/
+ * rolloff and returns an sRGB 8-bit canvas plus the auto-exposure EV. Held outside
+ * the reactive store; released via `dispose` when no longer needed.
  */
 export interface DecodedBase {
   readonly width: number
   readonly height: number
-  render(crop: Rect, size: Size, adjustments: Adjustments): Promise<RenderedResult>
+  render(crop: NormalizedCrop | null, size: Size, adjustments: Adjustments): Promise<RenderedResult>
   dispose(): void
 }
 
@@ -151,11 +157,12 @@ class CanvasBase implements DecodedBase {
     this.height = height
   }
 
-  async render(crop: Rect, size: Size, adjustments: Adjustments): Promise<RenderedResult> {
-    const luminances = sampleLuminances(this.source, crop)
+  async render(crop: NormalizedCrop | null, size: Size, adjustments: Adjustments): Promise<RenderedResult> {
+    const rect = cropRect(this.width, this.height, crop)
+    const luminances = sampleLuminances(this.source, rect)
     const autoEV = autoExposureEV(luminances, { maxEV: 4 })
     const ev = adjustments.exposureMode === 'auto' ? autoEV : adjustments.exposureEV
-    const canvas = await renderCanvas(this.source, crop, size, ev, adjustments)
+    const canvas = await renderCanvas(this.source, rect, size, ev, adjustments)
     return { canvas, autoEV }
   }
 
@@ -164,13 +171,78 @@ class CanvasBase implements DecodedBase {
   }
 }
 
+/** Preview edge: edits render from a small linear copy so slider feedback stays instant. */
+const PREVIEW_EDGE = 1024
+
+class LinearRgbBase implements DecodedBase {
+  readonly width: number
+  readonly height: number
+
+  constructor(private readonly full: DecodedRaw, private readonly preview: DecodedRaw) {
+    this.width = full.width
+    this.height = full.height
+  }
+
+  async render(crop: NormalizedCrop | null, size: Size, adjustments: Adjustments): Promise<RenderedResult> {
+    const src = Math.max(size.width, size.height) <= Math.max(this.preview.width, this.preview.height)
+      ? this.preview
+      : this.full
+    const rect = cropRect(src.width, src.height, crop)
+
+    const evSample = fitWithin(rect.width, rect.height, 128)
+    const lums = this.luminances(src, rect, evSample)
+    const autoEV = autoExposureEV(lums, { maxEV: 4 })
+    const ev = adjustments.exposureMode === 'auto' ? autoEV : adjustments.exposureEV
+
+    const r = downscaleCrop(src.r, src.width, src.height, rect, size.width, size.height)
+    const g = downscaleCrop(src.g, src.width, src.height, rect, size.width, size.height)
+    const b = downscaleCrop(src.b, src.width, src.height, rect, size.width, size.height)
+
+    const imageData = new ImageData(size.width, size.height)
+    applyLinearTransform(r, g, b, ev, adjustments, imageData.data)
+
+    const canvas = new OffscreenCanvas(size.width, size.height)
+    const ctx = canvas.getContext('2d')!
+    ctx.putImageData(imageData, 0, 0)
+    return { canvas, autoEV }
+  }
+
+  private luminances(src: DecodedRaw, rect: Rect, size: Size): Uint8Array {
+    const r = downscaleCrop(src.r, src.width, src.height, rect, size.width, size.height)
+    const g = downscaleCrop(src.g, src.width, src.height, rect, size.width, size.height)
+    const b = downscaleCrop(src.b, src.width, src.height, rect, size.width, size.height)
+    const n = size.width * size.height
+    const lums = new Uint8Array(n)
+    for (let i = 0; i < n; i++) {
+      const sr = linearToSrgbByte(clamp(r[i]!, 0, 1))
+      const sg = linearToSrgbByte(clamp(g[i]!, 0, 1))
+      const sb = linearToSrgbByte(clamp(b[i]!, 0, 1))
+      lums[i] = Math.round(0.2126 * sr + 0.7152 * sg + 0.0722 * sb)
+    }
+    return lums
+  }
+
+  dispose(): void {
+    // Planar Float32Arrays are reclaimed by GC; nothing to close.
+  }
+}
+
+function makePreview(full: DecodedRaw): DecodedRaw {
+  if (Math.max(full.width, full.height) <= PREVIEW_EDGE) return full
+  const size = fitWithin(full.width, full.height, PREVIEW_EDGE)
+  return {
+    width: size.width,
+    height: size.height,
+    r: downscalePlane(full.r, full.width, full.height, size.width, size.height),
+    g: downscalePlane(full.g, full.width, full.height, size.width, size.height),
+    b: downscalePlane(full.b, full.width, full.height, size.width, size.height),
+  }
+}
+
 export async function decodeBase(buffer: ArrayBuffer, sourceType: SourceType): Promise<DecodedBase> {
   if (sourceType === 'raw') {
     const decoded = await decodeRaw(buffer)
-    const canvas = new OffscreenCanvas(decoded.width, decoded.height)
-    const ctx = canvas.getContext('2d')!
-    ctx.putImageData(new ImageData(decoded.rgba, decoded.width, decoded.height), 0, 0)
-    return new CanvasBase(canvas, decoded.width, decoded.height, false)
+    return new LinearRgbBase(decoded, makePreview(decoded))
   }
 
   const bitmap = await createImageBitmap(new Blob([buffer]))
@@ -184,7 +256,7 @@ export async function renderThumb(
 ): Promise<{ blob: Blob; autoEV: number; width: number; height: number }> {
   const rect = cropRect(base.width, base.height, adjustments.crop)
   const size = fitWithin(rect.width, rect.height, thumbEdge)
-  const { canvas, autoEV } = await base.render(rect, size, adjustments)
+  const { canvas, autoEV } = await base.render(adjustments.crop, size, adjustments)
   const blob = await encodeThumbnail(canvas)
   return { blob, autoEV, width: size.width, height: size.height }
 }
@@ -196,6 +268,6 @@ export async function renderExport(
 ): Promise<Blob> {
   const rect = cropRect(base.width, base.height, adjustments.crop)
   const size = fitWithin(rect.width, rect.height, exportEdge)
-  const { canvas } = await base.render(rect, size, adjustments)
+  const { canvas } = await base.render(adjustments.crop, size, adjustments)
   return encodeExport(canvas)
 }

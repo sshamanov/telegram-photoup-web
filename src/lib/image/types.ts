@@ -1,5 +1,17 @@
 export type SourceType = 'raw' | 'jpeg'
 
+export interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface Size {
+  width: number
+  height: number
+}
+
 /** Crop in normalized source coordinates (0..1), orientation-independent. */
 export interface NormalizedCrop {
   x: number

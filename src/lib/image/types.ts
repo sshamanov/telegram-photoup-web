@@ -1,5 +1,7 @@
 export type SourceType = 'raw' | 'jpeg'
 
+export type ExportFormat = 'jpeg' | 'png'
+
 /** Crop in normalized source coordinates (0..1), orientation-independent. */
 export interface NormalizedCrop {
   x: number
@@ -40,9 +42,10 @@ export interface ProcessRequest {
   id: string
   fileName: string
   sourceType: SourceType
-  /** The source file bytes (JPEG only for now; RAW decode is spiked separately). */
+  /** The source file bytes (JPEG/PNG or RAW). */
   buffer: ArrayBuffer
   adjustments: Adjustments
+  format: ExportFormat
 }
 
 export interface ProcessResult {

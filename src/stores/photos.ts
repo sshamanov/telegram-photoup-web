@@ -2,7 +2,9 @@ import { writable, get } from 'svelte/store'
 import type { Adjustments, ProcessStatus, SourceType } from '../lib/image/types'
 import { neutralAdjustments } from '../lib/image/types'
 import { processInWorker } from '../lib/image/queue'
+import { processRaw, type ProcessedImage } from '../lib/image/process'
 import { pushToast } from './ui'
+import { settings } from './settings'
 
 export interface Photo {
   id: string
@@ -56,13 +58,20 @@ async function processOne(id: string): Promise<void> {
 
   try {
     const buffer = await item.file.arrayBuffer()
-    const result = await processInWorker({
-      id: item.id,
-      fileName: item.name,
-      sourceType: item.sourceType,
-      buffer,
-      adjustments: item.adjustments,
-    })
+    const format = get(settings).format
+
+    // RAW decode runs on the main thread: libraw-wasm spawns its own worker, and
+    // its WASM does not initialize correctly inside a nested worker. JPEG uses our worker.
+    const result: ProcessedImage = item.sourceType === 'raw'
+      ? await processRaw(buffer, item.adjustments, { format })
+      : await processInWorker({
+          id: item.id,
+          fileName: item.name,
+          sourceType: item.sourceType,
+          buffer,
+          adjustments: item.adjustments,
+          format,
+        })
 
     if (item.thumbUrl) URL.revokeObjectURL(item.thumbUrl)
     patchPhoto(id, {

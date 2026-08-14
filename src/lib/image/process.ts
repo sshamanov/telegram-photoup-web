@@ -1,5 +1,7 @@
-import type { Adjustments, WbGains } from './types'
+import type { Adjustments, ExportFormat, SourceType, WbGains } from './types'
 import { clamp, fitWithin, cropToPixels, autoExposureEV } from './math'
+import { decodeRaw } from './raw'
+import { encode as encodeJpeg444 } from '@jsquash/jpeg'
 
 const SRGB_TO_LINEAR = (() => {
   const lut = new Float32Array(256)
@@ -45,7 +47,10 @@ function applyPixelTransform(data: Uint8ClampedArray, ev: number, adjustments: A
   }
 }
 
-function sampleLuminances(source: ImageBitmap | OffscreenCanvas, crop: { x: number; y: number; width: number; height: number }): Uint8Array {
+function sampleLuminances(
+  source: CanvasImageSource,
+  crop: { x: number; y: number; width: number; height: number },
+): Uint8Array {
   const scale = Math.min(1, 128 / Math.max(crop.width, crop.height))
   const w = Math.max(1, Math.round(crop.width * scale))
   const h = Math.max(1, Math.round(crop.height * scale))
@@ -60,21 +65,13 @@ function sampleLuminances(source: ImageBitmap | OffscreenCanvas, crop: { x: numb
   return lums
 }
 
-interface RenderResult {
-  blob: Blob
-  width: number
-  height: number
-}
-
-async function render(
-  source: ImageBitmap,
+async function renderCanvas(
+  source: CanvasImageSource,
   crop: { x: number; y: number; width: number; height: number },
   size: { width: number; height: number },
   ev: number,
   adjustments: Adjustments,
-  format: 'image/jpeg' | 'image/png',
-  quality: number,
-): Promise<RenderResult> {
+): Promise<OffscreenCanvas> {
   const canvas = new OffscreenCanvas(size.width, size.height)
   const ctx = canvas.getContext('2d')!
   ctx.imageSmoothingQuality = 'high'
@@ -82,11 +79,30 @@ async function render(
   const imageData = ctx.getImageData(0, 0, size.width, size.height)
   applyPixelTransform(imageData.data, ev, adjustments)
   ctx.putImageData(imageData, 0, 0)
-  const blob = await canvas.convertToBlob({ type: format, quality })
-  return { blob, width: size.width, height: size.height }
+  return canvas
 }
 
-export interface ProcessedJpeg {
+async function encodeThumbnail(canvas: OffscreenCanvas): Promise<Blob> {
+  return canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 })
+}
+
+async function encodeExport(canvas: OffscreenCanvas, format: ExportFormat, quality: number): Promise<Blob> {
+  if (format === 'png') {
+    return canvas.convertToBlob({ type: 'image/png' })
+  }
+  // 4:4:4 chroma JPEG (no subsampling) via mozjpeg — avoids the browser's 4:2:0 encoder.
+  // chroma_subsample: 1 == 4:4:4 (1x1,1x1,1x1); 0 crashes mozjpeg's libjpeg.
+  const ctx = canvas.getContext('2d')!
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const buffer = await encodeJpeg444(imageData, {
+    quality: Math.round(clamp(quality, 0, 1) * 100),
+    chroma_subsample: 1,
+    auto_subsample: false,
+  })
+  return new Blob([buffer], { type: 'image/jpeg' })
+}
+
+export interface ProcessedImage {
   thumbnailBlob: Blob
   outputBlob: Blob
   width: number
@@ -94,43 +110,77 @@ export interface ProcessedJpeg {
   autoEV: number
 }
 
-export interface ProcessJpegOptions {
+export interface ProcessOptions {
   thumbEdge?: number
   exportEdge?: number
-  format?: 'image/jpeg' | 'image/png'
+  format?: ExportFormat
   quality?: number
 }
 
-/** JPEG/PNG path only. RAW decode is handled by a separate (spiked) module. */
-export async function processJpeg(
-  buffer: ArrayBuffer,
+async function processDecoded(
+  source: CanvasImageSource,
+  srcWidth: number,
+  srcHeight: number,
   adjustments: Adjustments,
-  opts: ProcessJpegOptions = {},
-): Promise<ProcessedJpeg> {
-  const { thumbEdge = 512, exportEdge = 2560, format = 'image/jpeg', quality = 1.0 } = opts
-  const bitmap = await createImageBitmap(new Blob([buffer]))
-
+  opts: ProcessOptions,
+  maxAutoEV: number,
+): Promise<ProcessedImage> {
+  const { thumbEdge = 512, exportEdge = 2560, format = 'jpeg', quality = 1.0 } = opts
   const crop = adjustments.crop
-    ? cropToPixels(adjustments.crop, bitmap.width, bitmap.height)
-    : { x: 0, y: 0, width: bitmap.width, height: bitmap.height }
+    ? cropToPixels(adjustments.crop, srcWidth, srcHeight)
+    : { x: 0, y: 0, width: srcWidth, height: srcHeight }
 
-  const luminances = sampleLuminances(bitmap, crop)
-  const autoEV = autoExposureEV(luminances, { maxEV: 2 })
+  const luminances = sampleLuminances(source, crop)
+  const autoEV = autoExposureEV(luminances, { maxEV: maxAutoEV })
   const ev = adjustments.exposureMode === 'auto' ? autoEV : adjustments.exposureEV
 
   const exportSize = fitWithin(crop.width, crop.height, exportEdge)
-  const output = await render(bitmap, crop, exportSize, ev, adjustments, format, quality)
+  const exportCanvas = await renderCanvas(source, crop, exportSize, ev, adjustments)
+  const outputBlob = await encodeExport(exportCanvas, format, quality)
 
   const thumbSize = fitWithin(crop.width, crop.height, thumbEdge)
-  const thumb = await render(bitmap, crop, thumbSize, ev, adjustments, 'image/jpeg', 0.85)
-
-  bitmap.close()
+  const thumbCanvas = await renderCanvas(source, crop, thumbSize, ev, adjustments)
+  const thumbnailBlob = await encodeThumbnail(thumbCanvas)
 
   return {
-    thumbnailBlob: thumb.blob,
-    outputBlob: output.blob,
-    width: output.width,
-    height: output.height,
+    thumbnailBlob,
+    outputBlob,
+    width: exportSize.width,
+    height: exportSize.height,
     autoEV,
   }
+}
+
+export async function processJpeg(
+  buffer: ArrayBuffer,
+  adjustments: Adjustments,
+  opts: ProcessOptions = {},
+): Promise<ProcessedImage> {
+  const bitmap = await createImageBitmap(new Blob([buffer]))
+  try {
+    return await processDecoded(bitmap, bitmap.width, bitmap.height, adjustments, opts, 2)
+  } finally {
+    bitmap.close()
+  }
+}
+
+export async function processRaw(
+  buffer: ArrayBuffer,
+  adjustments: Adjustments,
+  opts: ProcessOptions = {},
+): Promise<ProcessedImage> {
+  const decoded = await decodeRaw(buffer)
+  const canvas = new OffscreenCanvas(decoded.width, decoded.height)
+  const ctx = canvas.getContext('2d')!
+  ctx.putImageData(new ImageData(decoded.rgba, decoded.width, decoded.height), 0, 0)
+  return processDecoded(canvas, decoded.width, decoded.height, adjustments, opts, 4)
+}
+
+export async function processImage(
+  buffer: ArrayBuffer,
+  sourceType: SourceType,
+  adjustments: Adjustments,
+  opts: ProcessOptions = {},
+): Promise<ProcessedImage> {
+  return sourceType === 'raw' ? processRaw(buffer, adjustments, opts) : processJpeg(buffer, adjustments, opts)
 }

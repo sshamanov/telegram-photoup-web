@@ -20,8 +20,8 @@
   $: selectedPhotos = $photos.filter((p) => p.selected && p.status === 'ready' && p.outputBlob)
   $: editingPhoto = $photos.find((p) => p.id === editingId) ?? null
 
-  function toJpgName(name: string): string {
-    return name.replace(/\.[^.]+$/, '') + '.jpg'
+  function toExportName(name: string, format: 'jpeg' | 'png'): string {
+    return name.replace(/\.[^.]+$/, '') + (format === 'png' ? '.png' : '.jpg')
   }
 
   async function send(): Promise<void> {
@@ -36,7 +36,7 @@
     }
 
     const payload: UploadPhoto[] = selectedPhotos.flatMap((p) =>
-      p.outputBlob ? [{ file: p.outputBlob, fileName: toJpgName(p.name) }] : [],
+      p.outputBlob ? [{ file: p.outputBlob, fileName: toExportName(p.name, $settings.format) }] : [],
     )
 
     sending = true
@@ -77,6 +77,13 @@
     {/if}
 
     <footer>
+      <label class="fmt">
+        Upload as
+        <select value={$settings.format} onchange={(e) => settings.set({ ...$settings, format: e.currentTarget.value === 'png' ? 'png' : 'jpeg' })}>
+          <option value="jpeg">JPEG 4:4:4 (Q100)</option>
+          <option value="png">PNG (lossless)</option>
+        </select>
+      </label>
       <button onclick={send} disabled={sending || selectedPhotos.length === 0}>
         {sending ? `Sending ${sentCount}/${sendTotal}…` : `Send ${selectedPhotos.length} selected`}
       </button>
@@ -118,10 +125,21 @@
     bottom: 0;
     padding: 12px 0;
     background: var(--bg);
+    display: flex;
+    gap: 12px;
+    align-items: center;
   }
   footer button {
-    width: 100%;
+    flex: 1;
     padding: 14px;
     font-size: 15px;
+  }
+  .fmt {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 13px;
+    white-space: nowrap;
   }
 </style>

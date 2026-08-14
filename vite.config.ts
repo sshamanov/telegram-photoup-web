@@ -5,7 +5,7 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 export default defineConfig({
   plugins: [svelte(), basicSsl()],
   optimizeDeps: {
-    exclude: ['@mtcute/wasm'],
+    exclude: ['@mtcute/wasm', 'libraw-wasm', '@jsquash/jpeg'],
   },
   worker: {
     format: 'es',

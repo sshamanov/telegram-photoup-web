@@ -1,20 +1,16 @@
 /// <reference lib="webworker" />
 
-import { processJpeg } from './process'
+import { processImage } from './process'
 import type { ProcessRequest, ProcessResult, ProcessError } from './types'
 
 declare const self: DedicatedWorkerGlobalScope
 
 self.onmessage = async (event: MessageEvent<ProcessRequest>) => {
   const req = event.data
-  if (req.sourceType === 'raw') {
-    const msg: ProcessError = { id: req.id, status: 'error', error: 'RAW decode not yet wired (spike pending)' }
-    self.postMessage(msg)
-    return
-  }
-
   try {
-    const out = await processJpeg(req.buffer, req.adjustments)
+    const out = await processImage(req.buffer, req.sourceType, req.adjustments, {
+      format: req.format,
+    })
     const msg: ProcessResult = {
       id: req.id,
       status: 'ready',

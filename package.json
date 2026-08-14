@@ -11,7 +11,9 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
+    "@jsquash/jpeg": "^1.6.0",
     "@mtcute/web": "^0.29.6",
+    "libraw-wasm": "^1.6.0",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {

@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment / secrets (Telegram API id + hash)
+.env
+
+# Logs
+*.log
+
+# Scratch / temp
+tmp/
+temp/
+
+# TypeScript build info
+tsconfig.tsbuildinfo
+
+# Sample photos — local only, never committed
+samples/
+
+# kilo tooling
+.kilo/node_modules/
+.kilo/bun.lock
+
+# Playwright
+test-results/
+playwright-report/
+
+# Editor / OS
+.DS_Store

@@ -1,5 +1,5 @@
 import { writable, get } from 'svelte/store'
-import type { Adjustments, OutputVariant, ProcessStatus, SourceType } from '../lib/image/types'
+import type { Adjustments, ProcessStatus, SourceType } from '../lib/image/types'
 import { neutralAdjustments } from '../lib/image/types'
 import { processInWorker } from '../lib/image/queue'
 import { processRaw, type ProcessedImage } from '../lib/image/process'
@@ -15,7 +15,7 @@ export interface Photo {
   selected: boolean
   adjustments: Adjustments
   thumbUrl: string | null
-  outputs: OutputVariant[]
+  outputBlob: Blob | null
   width: number
   height: number
   autoEV: number | null
@@ -82,7 +82,7 @@ async function processOne(id: string): Promise<void> {
     patchPhoto(id, {
       status: 'ready',
       thumbUrl: URL.createObjectURL(result.thumbnailBlob),
-      outputs: result.outputs,
+      outputBlob: result.outputBlob,
       width: result.width,
       height: result.height,
       autoEV: result.autoEV,
@@ -104,7 +104,7 @@ export function addPhotos(files: File[]): void {
     selected: true,
     adjustments: { ...neutralAdjustments, exposureMode: 'auto' },
     thumbUrl: null,
-    outputs: [],
+    outputBlob: null,
     width: 0,
     height: 0,
     autoEV: null,

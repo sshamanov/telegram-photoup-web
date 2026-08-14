@@ -24,5 +24,5 @@ test('login → upload → processed thumbnail → select group → send', async
 
   // Send as an album of selected photos.
   await page.getByRole('button', { name: /Send 1 selected/ }).click()
-  await expect(page.getByText(/Sent 6 variants/)).toBeVisible()
+  await expect(page.getByText(/Sent 1 photo/)).toBeVisible()
 })

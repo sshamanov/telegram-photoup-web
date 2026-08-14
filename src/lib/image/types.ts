@@ -1,11 +1,5 @@
 export type SourceType = 'raw' | 'jpeg'
 
-/** A single export encoding variant (e.g. "png", "jpeg444-q100"). */
-export interface OutputVariant {
-  name: string
-  blob: Blob
-}
-
 /** Crop in normalized source coordinates (0..1), orientation-independent. */
 export interface NormalizedCrop {
   x: number
@@ -55,7 +49,7 @@ export interface ProcessRequest {
 export interface ProcessResult {
   id: string
   thumbnailBlob: Blob
-  outputs: OutputVariant[]
+  outputBlob: Blob
   width: number
   height: number
   autoEV: number

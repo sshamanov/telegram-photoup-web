@@ -16,20 +16,11 @@
   let sending = false
   let sendProgress = 0
 
-  $: selectedPhotos = $photos.filter((p) => p.selected && p.status === 'ready' && p.outputs.length > 0)
+  $: selectedPhotos = $photos.filter((p) => p.selected && p.status === 'ready' && p.outputBlob)
   $: editingPhoto = $photos.find((p) => p.id === editingId) ?? null
 
-  function toVariantName(base: string, variant: string): string {
-    const stem = base.replace(/\.[^.]+$/, '')
-    const ext = variant === 'png' ? '.png' : '.jpg'
-    return `${stem}_${variant}${ext}`
-  }
-
-  function variantCaption(name: string): string {
-    if (name === 'png') return 'PNG (lossless)'
-    const m = /^jpeg(444|420)-q(\d+)$/.exec(name)
-    if (m) return `JPEG ${m[1] === '444' ? '4:4:4' : '4:2:0'} Q${m[2]}`
-    return name
+  function toJpgName(base: string): string {
+    return base.replace(/\.[^.]+$/, '') + '.jpg'
   }
 
   async function send(): Promise<void> {
@@ -44,11 +35,7 @@
     }
 
     const payload: UploadPhoto[] = selectedPhotos.flatMap((p) =>
-      p.outputs.map((v) => ({
-        file: v.blob,
-        fileName: toVariantName(p.name, v.name),
-        caption: variantCaption(v.name),
-      })),
+      p.outputBlob ? [{ file: p.outputBlob, fileName: toJpgName(p.name) }] : [],
     )
 
     sending = true
@@ -57,7 +44,7 @@
       await getCurrentAdapter().sendPhotos(groupId, payload, (progress) => {
         sendProgress = progress
       })
-      pushToast('info', `Sent ${payload.length} variants`)
+      pushToast('info', `Sent ${payload.length} photo(s)`)
       clearPhotos()
     } catch (error) {
       pushToast('error', error instanceof Error ? error.message : String(error))
@@ -93,7 +80,7 @@
           <span class="bar"><span class="fill" style="width:{Math.round(sendProgress * 100)}%"></span></span>
           <span>Sending {Math.round(sendProgress * 100)}%</span>
         {:else}
-          Send {selectedPhotos.length} selected · all formats
+          Send {selectedPhotos.length} selected
         {/if}
       </button>
     </footer>

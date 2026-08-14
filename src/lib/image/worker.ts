@@ -13,7 +13,7 @@ self.onmessage = async (event: MessageEvent<ProcessRequest>) => {
       id: req.id,
       status: 'ready',
       thumbnailBlob: out.thumbnailBlob,
-      outputs: out.outputs,
+      outputBlob: out.outputBlob,
       width: out.width,
       height: out.height,
       autoEV: out.autoEV,

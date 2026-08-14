@@ -94,6 +94,8 @@ type VariantSpec =
 const VARIANT_SPECS: VariantSpec[] = [
   { name: 'png', kind: 'png' },
   { name: 'jpeg444-q100', kind: 'jpeg', chroma: 1, quality: 1 },
+  { name: 'jpeg444-q95', kind: 'jpeg', chroma: 1, quality: 0.95 },
+  { name: 'jpeg444-q90', kind: 'jpeg', chroma: 1, quality: 0.9 },
   { name: 'jpeg420-q100', kind: 'jpeg', chroma: 2, quality: 1 },
   { name: 'jpeg420-q95', kind: 'jpeg', chroma: 2, quality: 0.95 },
   { name: 'jpeg420-q90', kind: 'jpeg', chroma: 2, quality: 0.9 },

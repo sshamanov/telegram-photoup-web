@@ -93,7 +93,7 @@
           <span class="bar"><span class="fill" style="width:{Math.round(sendProgress * 100)}%"></span></span>
           <span>Sending {Math.round(sendProgress * 100)}%</span>
         {:else}
-          Send {selectedPhotos.length} selected · 6 formats each
+          Send {selectedPhotos.length} selected · all formats
         {/if}
       </button>
     </footer>

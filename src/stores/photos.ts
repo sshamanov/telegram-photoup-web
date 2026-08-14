@@ -1,10 +1,9 @@
 import { writable, get } from 'svelte/store'
-import type { Adjustments, ProcessStatus, SourceType } from '../lib/image/types'
+import type { Adjustments, OutputVariant, ProcessStatus, SourceType } from '../lib/image/types'
 import { neutralAdjustments } from '../lib/image/types'
 import { processInWorker } from '../lib/image/queue'
 import { processRaw, type ProcessedImage } from '../lib/image/process'
 import { pushToast } from './ui'
-import { settings } from './settings'
 import { debugLog } from '../lib/debug'
 
 export interface Photo {
@@ -16,7 +15,7 @@ export interface Photo {
   selected: boolean
   adjustments: Adjustments
   thumbUrl: string | null
-  outputBlob: Blob | null
+  outputs: OutputVariant[]
   width: number
   height: number
   autoEV: number | null
@@ -59,7 +58,6 @@ async function processOne(id: string): Promise<void> {
 
   try {
     const buffer = await item.file.arrayBuffer()
-    const format = get(settings).format
     debugLog('process', {
       id: item.id,
       type: item.sourceType,
@@ -71,21 +69,20 @@ async function processOne(id: string): Promise<void> {
     // RAW decode runs on the main thread: libraw-wasm spawns its own worker, and
     // its WASM does not initialize correctly inside a nested worker. JPEG uses our worker.
     const result: ProcessedImage = item.sourceType === 'raw'
-      ? await processRaw(buffer, item.adjustments, { format })
+      ? await processRaw(buffer, item.adjustments)
       : await processInWorker({
           id: item.id,
           fileName: item.name,
           sourceType: item.sourceType,
           buffer,
           adjustments: item.adjustments,
-          format,
         })
 
     if (item.thumbUrl) URL.revokeObjectURL(item.thumbUrl)
     patchPhoto(id, {
       status: 'ready',
       thumbUrl: URL.createObjectURL(result.thumbnailBlob),
-      outputBlob: result.outputBlob,
+      outputs: result.outputs,
       width: result.width,
       height: result.height,
       autoEV: result.autoEV,
@@ -107,7 +104,7 @@ export function addPhotos(files: File[]): void {
     selected: true,
     adjustments: { ...neutralAdjustments, exposureMode: 'auto' },
     thumbUrl: null,
-    outputBlob: null,
+    outputs: [],
     width: 0,
     height: 0,
     autoEV: null,
@@ -140,13 +137,4 @@ export function clearPhotos(): void {
     if (p.thumbUrl) URL.revokeObjectURL(p.thumbUrl)
   }
   photos.set([])
-}
-
-/** Re-encode every finished photo with the current export format (called when format changes). */
-export function reprocessAll(): void {
-  for (const p of get(photos)) {
-    if (p.status === 'ready' || p.status === 'error') {
-      enqueue(p.id)
-    }
-  }
 }

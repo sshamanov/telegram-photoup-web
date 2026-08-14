@@ -8,14 +8,12 @@ declare const self: DedicatedWorkerGlobalScope
 self.onmessage = async (event: MessageEvent<ProcessRequest>) => {
   const req = event.data
   try {
-    const out = await processImage(req.buffer, req.sourceType, req.adjustments, {
-      format: req.format,
-    })
+    const out = await processImage(req.buffer, req.sourceType, req.adjustments)
     const msg: ProcessResult = {
       id: req.id,
       status: 'ready',
       thumbnailBlob: out.thumbnailBlob,
-      outputBlob: out.outputBlob,
+      outputs: out.outputs,
       width: out.width,
       height: out.height,
       autoEV: out.autoEV,

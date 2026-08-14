@@ -1,6 +1,6 @@
 <script lang="ts">
   import { authState, getCurrentAdapter } from './stores/telegram'
-  import { photos, clearPhotos, reprocessAll } from './stores/photos'
+  import { photos, clearPhotos } from './stores/photos'
   import { settings } from './stores/settings'
   import { pushToast } from './stores/ui'
   import AuthScreen from './components/auth/AuthScreen.svelte'
@@ -16,11 +16,13 @@
   let sending = false
   let sendProgress = 0
 
-  $: selectedPhotos = $photos.filter((p) => p.selected && p.status === 'ready' && p.outputBlob)
+  $: selectedPhotos = $photos.filter((p) => p.selected && p.status === 'ready' && p.outputs.length > 0)
   $: editingPhoto = $photos.find((p) => p.id === editingId) ?? null
 
-  function toExportName(name: string, format: 'jpeg' | 'png'): string {
-    return name.replace(/\.[^.]+$/, '') + (format === 'png' ? '.png' : '.jpg')
+  function toVariantName(base: string, variant: string): string {
+    const stem = base.replace(/\.[^.]+$/, '')
+    const ext = variant === 'png' ? '.png' : '.jpg'
+    return `${stem}_${variant}${ext}`
   }
 
   async function send(): Promise<void> {
@@ -35,16 +37,22 @@
     }
 
     const payload: UploadPhoto[] = selectedPhotos.flatMap((p) =>
-      p.outputBlob ? [{ file: p.outputBlob, fileName: toExportName(p.name, $settings.format) }] : [],
+      p.outputs.map((v) => ({ file: v.blob, fileName: toVariantName(p.name, v.name) })),
     )
 
     sending = true
     sendProgress = 0
     try {
-      await getCurrentAdapter().sendPhotos(groupId, payload, (progress) => {
-        sendProgress = progress
-      })
-      pushToast('info', `Sent ${payload.length} photo(s)`)
+      const CHUNK = 10
+      let sent = 0
+      for (let i = 0; i < payload.length; i += CHUNK) {
+        const chunk = payload.slice(i, i + CHUNK)
+        await getCurrentAdapter().sendPhotos(groupId, chunk, (progress) => {
+          sendProgress = (sent + progress * chunk.length) / payload.length
+        })
+        sent += chunk.length
+      }
+      pushToast('info', `Sent ${payload.length} variants`)
       clearPhotos()
     } catch (error) {
       pushToast('error', error instanceof Error ? error.message : String(error))
@@ -75,25 +83,12 @@
     {/if}
 
     <footer>
-      <label class="fmt">
-        Upload as
-        <select
-          value={$settings.format}
-          onchange={(e) => {
-            settings.set({ ...$settings, format: e.currentTarget.value === 'png' ? 'png' : 'jpeg' })
-            reprocessAll()
-          }}
-        >
-          <option value="jpeg">JPEG 4:4:4 (Q100)</option>
-          <option value="png">PNG (lossless)</option>
-        </select>
-      </label>
       <button onclick={send} disabled={sending || selectedPhotos.length === 0}>
         {#if sending}
           <span class="bar"><span class="fill" style="width:{Math.round(sendProgress * 100)}%"></span></span>
           <span>Sending {Math.round(sendProgress * 100)}%</span>
         {:else}
-          Send {selectedPhotos.length} selected
+          Send {selectedPhotos.length} selected · 6 formats each
         {/if}
       </button>
     </footer>
@@ -182,15 +177,5 @@
     background: linear-gradient(90deg, var(--accent), var(--accent-2));
     border-radius: 4px;
     transition: width 0.2s ease;
-  }
-  .fmt {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--muted);
-    font-size: 11px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    white-space: nowrap;
   }
 </style>

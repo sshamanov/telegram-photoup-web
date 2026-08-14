@@ -1,4 +1,4 @@
-import type { Adjustments, ExportFormat, SourceType, WbGains } from './types'
+import type { Adjustments, OutputVariant, SourceType, WbGains } from './types'
 import { clamp, fitWithin, cropToPixels, autoExposureEV } from './math'
 import { decodeRaw } from './raw'
 import { encode as encodeJpeg444 } from '@jsquash/jpeg'
@@ -86,25 +86,42 @@ async function encodeThumbnail(canvas: OffscreenCanvas): Promise<Blob> {
   return canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 })
 }
 
-async function encodeExport(canvas: OffscreenCanvas, format: ExportFormat, quality: number): Promise<Blob> {
-  if (format === 'png') {
-    return canvas.convertToBlob({ type: 'image/png' })
-  }
-  // 4:4:4 chroma JPEG (no subsampling) via mozjpeg — avoids the browser's 4:2:0 encoder.
-  // chroma_subsample: 1 == 4:4:4 (1x1,1x1,1x1); 0 crashes mozjpeg's libjpeg.
+type VariantSpec =
+  | { name: string; kind: 'png' }
+  | { name: string; kind: 'jpeg'; chroma: number; quality: number }
+
+/** The export matrix we test against Telegram recompression. chroma: 1 = 4:4:4, 2 = 4:2:0. */
+const VARIANT_SPECS: VariantSpec[] = [
+  { name: 'png', kind: 'png' },
+  { name: 'jpeg444-q100', kind: 'jpeg', chroma: 1, quality: 1 },
+  { name: 'jpeg420-q100', kind: 'jpeg', chroma: 2, quality: 1 },
+  { name: 'jpeg420-q95', kind: 'jpeg', chroma: 2, quality: 0.95 },
+  { name: 'jpeg420-q90', kind: 'jpeg', chroma: 2, quality: 0.9 },
+  { name: 'jpeg420-q87', kind: 'jpeg', chroma: 2, quality: 0.87 },
+]
+
+async function encodeVariants(canvas: OffscreenCanvas): Promise<OutputVariant[]> {
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-  const buffer = await encodeJpeg444(imageData, {
-    quality: Math.round(clamp(quality, 0, 1) * 100),
-    chroma_subsample: 1,
-    auto_subsample: false,
-  })
-  return new Blob([buffer], { type: 'image/jpeg' })
+  const outputs: OutputVariant[] = []
+  for (const spec of VARIANT_SPECS) {
+    if (spec.kind === 'png') {
+      outputs.push({ name: spec.name, blob: await canvas.convertToBlob({ type: 'image/png' }) })
+    } else {
+      const buffer = await encodeJpeg444(imageData, {
+        quality: Math.round(clamp(spec.quality, 0, 1) * 100),
+        chroma_subsample: spec.chroma,
+        auto_subsample: false,
+      })
+      outputs.push({ name: spec.name, blob: new Blob([buffer], { type: 'image/jpeg' }) })
+    }
+  }
+  return outputs
 }
 
 export interface ProcessedImage {
   thumbnailBlob: Blob
-  outputBlob: Blob
+  outputs: OutputVariant[]
   width: number
   height: number
   autoEV: number
@@ -113,8 +130,6 @@ export interface ProcessedImage {
 export interface ProcessOptions {
   thumbEdge?: number
   exportEdge?: number
-  format?: ExportFormat
-  quality?: number
 }
 
 async function processDecoded(
@@ -125,7 +140,7 @@ async function processDecoded(
   opts: ProcessOptions,
   maxAutoEV: number,
 ): Promise<ProcessedImage> {
-  const { thumbEdge = 512, exportEdge = 2560, format = 'jpeg', quality = 1.0 } = opts
+  const { thumbEdge = 512, exportEdge = 2560 } = opts
   const crop = adjustments.crop
     ? cropToPixels(adjustments.crop, srcWidth, srcHeight)
     : { x: 0, y: 0, width: srcWidth, height: srcHeight }
@@ -136,7 +151,7 @@ async function processDecoded(
 
   const exportSize = fitWithin(crop.width, crop.height, exportEdge)
   const exportCanvas = await renderCanvas(source, crop, exportSize, ev, adjustments)
-  const outputBlob = await encodeExport(exportCanvas, format, quality)
+  const outputs = await encodeVariants(exportCanvas)
 
   const thumbSize = fitWithin(crop.width, crop.height, thumbEdge)
   const thumbCanvas = await renderCanvas(source, crop, thumbSize, ev, adjustments)
@@ -144,7 +159,7 @@ async function processDecoded(
 
   return {
     thumbnailBlob,
-    outputBlob,
+    outputs,
     width: exportSize.width,
     height: exportSize.height,
     autoEV,

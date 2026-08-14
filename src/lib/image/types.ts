@@ -51,6 +51,7 @@ export interface ProcessResult {
   outputBlob: Blob
   width: number
   height: number
+  autoEV: number
   status: 'ready'
   error?: undefined
 }

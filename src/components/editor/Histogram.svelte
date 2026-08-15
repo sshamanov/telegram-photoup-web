@@ -27,18 +27,20 @@
     for (let i = 0; i < 256; i++) agg[i >> 2]! += bins[i]!
     let max = 1
     for (const b of agg) if (b > max) max = b
-    const logMax = Math.log1p(max)
 
+    // Linear scale (real distribution) + pixel-perfect integer bar layout.
     const gap = 2
-    const barW = (clientWidth - gap * (BINS - 1)) / BINS
-    const plotH = height - 1
+    const avail = clientWidth - gap * (BINS - 1)
+    const barW = Math.floor(avail / BINS)
+    const extra = avail - barW * BINS
 
-    ctx.fillStyle = 'rgba(255, 122, 69, 0.78)'
+    ctx.fillStyle = 'rgba(255, 122, 69, 0.82)'
+    let x = 0
     for (let i = 0; i < BINS; i++) {
-      const v = Math.log1p(agg[i]!) / logMax
-      const bh = Math.round(v * plotH)
-      if (bh <= 0) continue
-      ctx.fillRect(Math.round(i * (barW + gap)), height - bh, Math.round(barW), bh)
+      const w = barW + (i < extra ? 1 : 0)
+      const bh = Math.round((agg[i]! / max) * height)
+      if (bh > 0) ctx.fillRect(x, height - bh, w, bh)
+      x += w + gap
     }
   }
 </script>

@@ -126,7 +126,7 @@
     margin: 0;
     -webkit-appearance: none;
     appearance: none;
-    border-radius: 4px;
+    border-radius: 0;
     background: rgba(13, 11, 9, 0.7);
     border: 1.5px solid var(--border-strong);
     cursor: pointer;

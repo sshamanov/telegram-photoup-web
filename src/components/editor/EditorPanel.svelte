@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import type { Photo } from '../../stores/photos'
-  import { updateAdjustments, resetAdjustments } from '../../stores/photos'
+  import { updateAdjustments } from '../../stores/photos'
   import { pushToast } from '../../stores/ui'
   import type { NormalizedCrop } from '../../lib/image/types'
   import Slider from './Slider.svelte'
@@ -71,10 +71,18 @@
     updateAdjustments(photo.id, { exposureMode: 'auto' })
   }
 
-  function reset(): void {
-    resetAdjustments(photo.id)
-    draftCrop = { x: 0, y: 0, width: 1, height: 1 }
-    activePreset = 'free'
+  function resetExposure(): void {
+    updateAdjustments(photo.id, { exposureMode: 'manual', exposureEV: 0 })
+  }
+
+  function commitCrop(): void {
+    if (!draftCrop) return
+    const isFull =
+      draftCrop.x <= 0.005 &&
+      draftCrop.y <= 0.005 &&
+      draftCrop.width >= 0.995 &&
+      draftCrop.height >= 0.995
+    updateAdjustments(photo.id, { crop: isFull ? null : draftCrop })
   }
 
   function applyPreset(preset: Preset): void {
@@ -94,17 +102,7 @@
       w = target
     }
     draftCrop = { x: (1 - w) / 2, y: (1 - h) / 2, width: w, height: h }
-  }
-
-  function applyCrop(): void {
-    if (draftCrop) {
-      const isFull =
-        draftCrop.x <= 0.005 &&
-        draftCrop.y <= 0.005 &&
-        draftCrop.width >= 0.995 &&
-        draftCrop.height >= 0.995
-      updateAdjustments(photo.id, { crop: isFull ? null : draftCrop })
-    }
+    commitCrop()
   }
 
   function resetCrop(): void {
@@ -189,7 +187,9 @@
   }
 
   function onWindowPointerUp(): void {
+    if (!drag) return
     drag = null
+    commitCrop()
   }
 
   function onStagePointerDown(event: MouseEvent): void {
@@ -230,96 +230,97 @@
   <div class="panel">
     <header>
       <strong>{photo.name}</strong>
-      <div class="header-actions">
-        <button onclick={reset}>Reset</button>
-        <button onclick={onClose}>Close</button>
-      </div>
+      <button onclick={onClose}>Close</button>
     </header>
 
-    <div class="preview" class:picking={pickingNeutral}>
-      <div
-        class="stage"
-        bind:this={stageEl}
-        bind:clientWidth={stageW}
-        bind:clientHeight={stageH}
-        role="img"
-        aria-label={photo.name}
-        onpointerdown={onStagePointerDown}
-      >
-        {#if photo.fullThumbUrl}
-          <!-- svelte-ignore a11y-click-events-have-key-events -->
-          <img bind:this={previewEl} src={photo.fullThumbUrl} alt={photo.name} />
-        {/if}
-        {#if draftCrop}
+    <div class="body">
+      <div class="left">
+        <div class="preview" class:picking={pickingNeutral}>
           <div
-            class="crop-box"
-            role="group"
-            aria-label="Crop area — drag inside to move"
-            style={boxStyle}
-            onpointerdown={startMove}
+            class="stage"
+            bind:this={stageEl}
+            bind:clientWidth={stageW}
+            bind:clientHeight={stageH}
+            role="img"
+            aria-label={photo.name}
+            onpointerdown={onStagePointerDown}
           >
-            <button type="button" class="h h-nw" data-handle="nw" aria-label="Resize crop top-left" onpointerdown={(e) => startResize(e, 'nw')}></button>
-            <button type="button" class="h h-n" data-handle="n" aria-label="Resize crop top" onpointerdown={(e) => startResize(e, 'n')}></button>
-            <button type="button" class="h h-ne" data-handle="ne" aria-label="Resize crop top-right" onpointerdown={(e) => startResize(e, 'ne')}></button>
-            <button type="button" class="h h-e" data-handle="e" aria-label="Resize crop right" onpointerdown={(e) => startResize(e, 'e')}></button>
-            <button type="button" class="h h-se" data-handle="se" aria-label="Resize crop bottom-right" onpointerdown={(e) => startResize(e, 'se')}></button>
-            <button type="button" class="h h-s" data-handle="s" aria-label="Resize crop bottom" onpointerdown={(e) => startResize(e, 's')}></button>
-            <button type="button" class="h h-sw" data-handle="sw" aria-label="Resize crop bottom-left" onpointerdown={(e) => startResize(e, 'sw')}></button>
-            <button type="button" class="h h-w" data-handle="w" aria-label="Resize crop left" onpointerdown={(e) => startResize(e, 'w')}></button>
+            {#if photo.fullThumbUrl}
+              <!-- svelte-ignore a11y-click-events-have-key-events -->
+              <img bind:this={previewEl} src={photo.fullThumbUrl} alt={photo.name} />
+            {/if}
+            {#if draftCrop}
+              <div
+                class="crop-box"
+                role="group"
+                aria-label="Crop area — drag inside to move"
+                style={boxStyle}
+                onpointerdown={startMove}
+              >
+                <button type="button" class="h h-nw" data-handle="nw" aria-label="Resize crop top-left" onpointerdown={(e) => startResize(e, 'nw')}></button>
+                <button type="button" class="h h-n" data-handle="n" aria-label="Resize crop top" onpointerdown={(e) => startResize(e, 'n')}></button>
+                <button type="button" class="h h-ne" data-handle="ne" aria-label="Resize crop top-right" onpointerdown={(e) => startResize(e, 'ne')}></button>
+                <button type="button" class="h h-e" data-handle="e" aria-label="Resize crop right" onpointerdown={(e) => startResize(e, 'e')}></button>
+                <button type="button" class="h h-se" data-handle="se" aria-label="Resize crop bottom-right" onpointerdown={(e) => startResize(e, 'se')}></button>
+                <button type="button" class="h h-s" data-handle="s" aria-label="Resize crop bottom" onpointerdown={(e) => startResize(e, 's')}></button>
+                <button type="button" class="h h-sw" data-handle="sw" aria-label="Resize crop bottom-left" onpointerdown={(e) => startResize(e, 'sw')}></button>
+                <button type="button" class="h h-w" data-handle="w" aria-label="Resize crop left" onpointerdown={(e) => startResize(e, 'w')}></button>
+              </div>
+            {/if}
           </div>
-        {/if}
+        </div>
+
+        <div class="hist-wrap">
+          <Histogram bins={photo.histogram} />
+        </div>
       </div>
-    </div>
 
-    <Histogram bins={photo.histogram} />
+      <div class="right">
+        <div class="row slider-row">
+          <button class:active={photo.adjustments.exposureMode === 'auto'} onclick={autoExposure}>Auto</button>
+          <button onclick={resetExposure}>Reset</button>
+          <div class="grow">
+            <Slider
+              label="Exposure"
+              min={-3}
+              max={5}
+              step={0.1}
+              value={shownEV}
+              display={`${shownEV >= 0 ? '+' : ''}${shownEV.toFixed(2)} EV`}
+              zero={0}
+              onChange={setExposure}
+            />
+          </div>
+        </div>
 
-    <div class="controls">
-      <div class="row slider-row">
-        <button class:active={photo.adjustments.exposureMode === 'auto'} onclick={autoExposure}>Auto</button>
-        <div class="grow">
+        {#if isRaw}
           <Slider
-            label="Exposure"
-            min={-3}
-            max={5}
-            step={0.1}
-            value={shownEV}
-            display={`${shownEV >= 0 ? '+' : ''}${shownEV.toFixed(2)} EV`}
-            zero={0}
-            onChange={setExposure}
+            label="Temperature"
+            min={2500}
+            max={10000}
+            step={50}
+            value={photo.adjustments.temperature}
+            display={`${Math.round(photo.adjustments.temperature)}K`}
+            onChange={(v) => updateAdjustments(photo.id, { temperature: v })}
           />
-        </div>
-      </div>
+          <div class="row">
+            <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>
+              Neutral picker
+            </button>
+          </div>
+          <p class="hint">click a neutral area in the image to fix white balance</p>
+        {/if}
 
-      {#if isRaw}
-        <Slider
-          label="Temperature"
-          min={-1}
-          max={1}
-          step={0.01}
-          value={photo.adjustments.temperature}
-          onChange={(v) => updateAdjustments(photo.id, { temperature: v })}
-        />
-        <div class="row">
-          <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>
-            Neutral picker
-          </button>
-          <span class="hint">click a neutral area in the image</span>
-        </div>
-      {/if}
-
-      <div class="crop-controls">
-        <div class="row">
-          <span class="presets">
+        <div class="crop-controls">
+          <div class="presets">
             <button class:active={activePreset === 'free'} onclick={() => applyPreset('free')}>Free</button>
             <button class:active={activePreset === '1:1'} onclick={() => applyPreset('1:1')}>1:1</button>
             <button class:active={activePreset === '3:2'} onclick={() => applyPreset('3:2')}>3:2</button>
             <button class:active={activePreset === '2:3'} onclick={() => applyPreset('2:3')}>2:3</button>
-          </span>
-          <span class="spacer"></span>
-          <button class="primary" onclick={applyCrop}>Apply</button>
-          <button onclick={resetCrop}>Reset crop</button>
+          </div>
+          <button class="reset-crop" onclick={resetCrop}>Reset crop</button>
+          <p class="hint">Drag handles to resize · drag inside to move · hold Shift to keep ratio</p>
         </div>
-        <p class="hint">Drag handles to resize · drag inside to move · hold Shift to keep ratio</p>
       </div>
     </div>
   </div>
@@ -338,10 +339,11 @@
     padding: 20px;
   }
   .panel {
+    --img-edge: min(58vh, 520px);
     background: var(--surface);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-lg);
-    width: min(940px, 94vw);
+    width: min(1120px, 96vw);
     max-height: 94vh;
     overflow: auto;
     padding: 20px;
@@ -365,11 +367,24 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .header-actions {
+  .body {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
+    gap: 24px;
+    align-items: flex-start;
+  }
+  .left {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .right {
+    flex: 1 1 auto;
+    min-width: 300px;
+    max-width: 380px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
   }
   .preview {
     position: relative;
@@ -377,11 +392,13 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
-    width: min(100%, 62vh);
+    width: var(--img-edge);
     aspect-ratio: 1 / 1;
     flex-shrink: 0;
-    margin: 0 auto;
     user-select: none;
+  }
+  .hist-wrap {
+    width: var(--img-edge);
   }
   .stage {
     position: relative;
@@ -430,19 +447,13 @@
   .h-s  { top: 100%; left: 50%; transform: translate(-50%, -50%); cursor: ns-resize; }
   .h-sw { top: 100%; left: 0; transform: translate(-50%, -50%); cursor: nesw-resize; }
   .h-w  { top: 50%; left: 0; transform: translate(-50%, -50%); cursor: ew-resize; }
-  .controls {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    padding-top: 2px;
-  }
   .row {
     display: flex;
     align-items: center;
     gap: 10px;
   }
   .slider-row {
-    gap: 14px;
+    gap: 10px;
   }
   .grow {
     flex: 1;
@@ -458,17 +469,14 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    flex-wrap: wrap;
   }
   .presets button {
     padding: 6px 10px;
   }
-  .spacer {
-    flex: 1;
-  }
-  .primary {
-    border-color: var(--accent);
-    background: var(--accent);
-    color: var(--accent-ink);
+  .reset-crop {
+    margin-top: 6px;
+    width: 100%;
   }
   .hint {
     color: var(--faint);

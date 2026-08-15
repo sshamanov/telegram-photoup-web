@@ -17,7 +17,7 @@ async function openEditor(page: import('@playwright/test').Page): Promise<void> 
   await expect(page.locator('.h-se')).toBeVisible()
 }
 
-test('crop persists as the new image after Apply and Close', async ({ page }) => {
+test('crop auto-applies on release and persists after Close', async ({ page }) => {
   await login(page)
   await openEditor(page)
 
@@ -27,12 +27,10 @@ test('crop persists as the new image after Apply and Close', async ({ page }) =>
   await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
   await page.mouse.down()
   await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5, { steps: 6 })
-  await page.mouse.up()
+  await page.mouse.up() // crop commits on release
 
-  await page.getByRole('button', { name: 'Apply' }).click()
   await page.getByRole('button', { name: 'Close' }).click()
 
-  // The grid thumbnail now reflects the applied crop.
   const gridImg = page.locator('.thumb img')
   await expect
     .poll(async () => gridImg.evaluate((el) => (el as HTMLImageElement).naturalWidth))
@@ -86,13 +84,11 @@ test('re-opening the editor shows the old crop for refinement', async ({ page })
   await openEditor(page)
 
   await page.getByRole('button', { name: '1:1' }).click()
-  await page.getByRole('button', { name: 'Apply' }).click()
   await page.getByRole('button', { name: 'Close' }).click()
 
   await page.getByAltText('200x100.png').click()
   await expect(page.locator('.h-se')).toBeVisible()
 
-  // The applied square crop is shown over the full image for easy refinement.
   const box = (await page.locator('.crop-box').boundingBox())!
   expect(Math.abs(box.width - box.height)).toBeLessThan(1)
 })

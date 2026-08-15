@@ -65,7 +65,10 @@
   <main class="shell">
     <header>
       <h1>photoup</h1>
-      <GroupSelector />
+      <div class="actions">
+        <GroupSelector />
+        <button class="reset" onclick={clearPhotos} disabled={$photos.length === 0}>Reset</button>
+      </div>
     </header>
 
     <UploadZone />
@@ -114,6 +117,18 @@
     gap: 16px;
     padding: 6px 0 14px;
     border-bottom: 1px solid var(--border);
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  button.reset {
+    color: var(--faint);
+  }
+  button.reset:not(:disabled):hover {
+    border-color: var(--danger);
+    color: var(--danger);
   }
   h1 {
     margin: 0;

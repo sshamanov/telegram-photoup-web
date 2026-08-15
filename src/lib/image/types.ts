@@ -31,7 +31,7 @@ export type ExposureMode = 'auto' | 'manual'
 export interface Adjustments {
   exposureMode: ExposureMode
   exposureEV: number
-  /** RAW-only: relative temperature (-1..1, warm = +). */
+  /** RAW-only: color temperature in Kelvin (2500..10000, neutral 5500). */
   temperature: number
   /** RAW-only: neutral-picker channel gains (1 = neutral). */
   neutralGains: WbGains | null
@@ -42,7 +42,7 @@ export interface Adjustments {
 export const neutralAdjustments: Adjustments = {
   exposureMode: 'manual',
   exposureEV: 0,
-  temperature: 0,
+  temperature: 5500,
   neutralGains: null,
   crop: null,
 }

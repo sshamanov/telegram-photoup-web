@@ -31,8 +31,11 @@ function highlightRolloff(x: number): number {
 function gainCoefficients(ev: number, adjustments: Adjustments): { r: number; g: number; b: number } {
   const gain = Math.pow(2, ev)
   const wb: WbGains = adjustments.neutralGains ?? { r: 1, g: 1, b: 1 }
-  const tempR = Math.pow(2, adjustments.temperature * 0.15)
-  const tempB = Math.pow(2, -adjustments.temperature * 0.15)
+  // Color temperature (Kelvin) → warm/cool channel gains. 5500K is neutral:
+  // lower Kelvin warms (more red, less blue), higher Kelvin cools.
+  const t = adjustments.temperature / 5500
+  const tempR = Math.pow(1 / t, 0.6)
+  const tempB = Math.pow(t, 0.6)
   return { r: gain * wb.r * tempR, g: gain * wb.g, b: gain * wb.b * tempB }
 }
 

@@ -126,14 +126,18 @@
     margin: 0;
     -webkit-appearance: none;
     appearance: none;
-    border-radius: 50%;
+    border-radius: 4px;
     background: rgba(13, 11, 9, 0.7);
     border: 1.5px solid var(--border-strong);
     cursor: pointer;
     transition: all 0.15s ease;
   }
   .tick:checked {
-    background: var(--accent);
+    background-color: var(--accent);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-6.5' fill='none' stroke='%232a1408' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 11px 11px;
     border-color: var(--accent);
     box-shadow: 0 0 10px rgba(255, 122, 69, 0.5);
   }

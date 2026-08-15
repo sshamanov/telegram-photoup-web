@@ -9,7 +9,7 @@ async function login(page: import('@playwright/test').Page): Promise<void> {
   await expect(page.getByText('Send to')).toBeVisible()
 }
 
-test('crop commits a region', async ({ page }) => {
+test('crop commits a region that actually crops the image', async ({ page }) => {
   await login(page)
 
   await page.setInputFiles('input[type=file]', 'tests/fixtures/200x100.png')
@@ -18,10 +18,14 @@ test('crop commits a region', async ({ page }) => {
   await page.getByAltText('200x100.png').click()
   await expect(page.getByRole('button', { name: 'Crop' })).toBeVisible()
 
+  const img = page.locator('.stage img')
+  const before = await img.evaluate((el) => (el as HTMLImageElement).naturalWidth)
+  expect(before).toBe(200)
+
   await page.getByRole('button', { name: 'Crop' }).click()
 
-  const preview = page.locator('.preview')
-  const box = await preview.boundingBox()
+  const stage = page.locator('.stage')
+  const box = await stage.boundingBox()
   expect(box).not.toBeNull()
 
   const x0 = box!.x
@@ -29,13 +33,19 @@ test('crop commits a region', async ({ page }) => {
   const w = box!.width
   const h = box!.height
 
-  await page.mouse.move(x0 + w * 0.2, y0 + h * 0.2)
+  // Drag a crop over the right ~half of the image.
+  await page.mouse.move(x0 + w * 0.5, y0 + h * 0.05)
   await page.mouse.down()
-  await page.mouse.move(x0 + w * 0.6, y0 + h * 0.8, { steps: 5 })
+  await page.mouse.move(x0 + w * 0.98, y0 + h * 0.95, { steps: 5 })
   await page.mouse.up()
 
   await page.getByRole('button', { name: 'Apply crop' }).click()
 
-  // crop committed → the crop overlay remains visible showing the applied region
+  // crop committed → overlay remains visible showing the applied region
   await expect(page.locator('.crop-box')).toBeVisible()
+
+  // and the re-rendered thumbnail is narrower than the 200px source.
+  await expect
+    .poll(async () => img.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+    .toBeLessThan(before)
 })

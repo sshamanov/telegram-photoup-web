@@ -117,25 +117,26 @@
       <button onclick={onClose}>Close</button>
     </header>
 
-    <div
-      class="preview"
-      class:crop-mode={cropMode}
-      role="img"
-      aria-label={photo.name}
-      onpointerdown={onPointerDown}
-      onpointermove={onPointerMove}
-      onpointerup={onPointerUp}
-    >
-      {#if photo.thumbUrl}
-        <!-- svelte-ignore a11y-click-events-have-key-events -->
-        <img bind:this={previewEl} src={photo.thumbUrl} alt={photo.name} />
-      {/if}
-      {#if cropOverlay}
-        <div
-          class="crop-box"
-          style="left:{cropOverlay.x * 100}%;top:{cropOverlay.y * 100}%;width:{cropOverlay.width * 100}%;height:{cropOverlay.height * 100}%"
-        ></div>
-      {/if}
+    <div class="preview" class:crop-mode={cropMode}>
+      <div
+        class="stage"
+        role="img"
+        aria-label={photo.name}
+        onpointerdown={onPointerDown}
+        onpointermove={onPointerMove}
+        onpointerup={onPointerUp}
+      >
+        {#if photo.thumbUrl}
+          <!-- svelte-ignore a11y-click-events-have-key-events -->
+          <img bind:this={previewEl} src={photo.thumbUrl} alt={photo.name} />
+        {/if}
+        {#if cropOverlay}
+          <div
+            class="crop-box"
+            style="left:{cropOverlay.x * 100}%;top:{cropOverlay.y * 100}%;width:{cropOverlay.width * 100}%;height:{cropOverlay.height * 100}%"
+          ></div>
+        {/if}
+      </div>
     </div>
 
     <div class="controls">
@@ -231,8 +232,15 @@
     overflow: hidden;
     display: flex;
     justify-content: center;
+    align-items: flex-start;
     max-height: 62vh;
     user-select: none;
+  }
+  .stage {
+    position: relative;
+    flex: 0 0 auto;
+    max-width: 100%;
+    line-height: 0;
   }
   .preview img {
     max-width: 100%;

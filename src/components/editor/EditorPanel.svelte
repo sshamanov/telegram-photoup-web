@@ -11,16 +11,10 @@
   export let onClose: () => void = () => {}
 
   type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
-  type Preset = 'free' | '1:1' | '3:2' | '2:3'
   type DragState =
     | { kind: 'move'; startX: number; startY: number; startCrop: NormalizedCrop }
     | { kind: 'resize'; handle: Handle; startX: number; startY: number; startCrop: NormalizedCrop }
 
-  const PRESET_RATIOS: Record<Exclude<Preset, 'free'>, number> = {
-    '1:1': 1,
-    '3:2': 3 / 2,
-    '2:3': 2 / 3,
-  }
   const MIN_CROP = 0.05
 
   let previewEl: HTMLImageElement | null = null
@@ -30,7 +24,6 @@
   let pickingNeutral = false
   let draftCrop: NormalizedCrop | null = null
   let drag: DragState | null = null
-  let activePreset: Preset = 'free'
 
   $: isRaw = photo.sourceType === 'raw'
   $: shownEV = photo.adjustments.exposureMode === 'auto'
@@ -85,10 +78,7 @@
     updateAdjustments(photo.id, { crop: isFull ? null : draftCrop })
   }
 
-  function applyPreset(preset: Preset): void {
-    activePreset = preset
-    if (preset === 'free') return
-    const ratio = PRESET_RATIOS[preset]
+  function applyPreset(ratio: number): void {
     const fw = photo.fullWidth || 1
     const fh = photo.fullHeight || 1
     const target = ratio * (fh / fw)
@@ -108,7 +98,6 @@
   function resetCrop(): void {
     updateAdjustments(photo.id, { crop: null })
     draftCrop = { x: 0, y: 0, width: 1, height: 1 }
-    activePreset = 'free'
   }
 
   function startMove(event: PointerEvent): void {
@@ -181,9 +170,7 @@
       return
     }
 
-    const keepAspect = event.shiftKey
-    if (!keepAspect) activePreset = 'free'
-    draftCrop = resizeCrop(c, drag.handle, dx, dy, keepAspect)
+    draftCrop = resizeCrop(c, drag.handle, dx, dy, event.shiftKey)
   }
 
   function onWindowPointerUp(): void {
@@ -228,11 +215,6 @@
 
 <div class="overlay">
   <div class="panel">
-    <header>
-      <strong>{photo.name}</strong>
-      <button onclick={onClose}>Close</button>
-    </header>
-
     <div class="body">
       <div class="left">
         <div class="preview" class:picking={pickingNeutral}>
@@ -269,58 +251,63 @@
             {/if}
           </div>
         </div>
-
-        <div class="hist-wrap">
-          <Histogram bins={photo.histogram} />
-        </div>
       </div>
 
       <div class="right">
-        <div class="row slider-row">
-          <button class:active={photo.adjustments.exposureMode === 'auto'} onclick={autoExposure}>Auto</button>
-          <button onclick={resetExposure}>Reset</button>
-          <div class="grow">
-            <Slider
-              label="Exposure"
-              min={-3}
-              max={5}
-              step={0.1}
-              value={shownEV}
-              display={`${shownEV >= 0 ? '+' : ''}${shownEV.toFixed(2)} EV`}
-              zero={0}
-              onChange={setExposure}
-            />
+        <strong class="name" title={photo.name}>{photo.name}</strong>
+
+        <Histogram bins={photo.histogram} />
+
+        <div class="control">
+          <Slider
+            label="Exposure"
+            min={-3}
+            max={5}
+            step={0.1}
+            value={shownEV}
+            display={`${shownEV >= 0 ? '+' : ''}${shownEV.toFixed(2)} EV`}
+            zero={0}
+            onChange={setExposure}
+          />
+          <div class="row">
+            <button class:active={photo.adjustments.exposureMode === 'auto'} onclick={autoExposure}>Auto</button>
+            <button onclick={resetExposure}>Reset</button>
           </div>
         </div>
 
         {#if isRaw}
-          <Slider
-            label="Temperature"
-            min={2500}
-            max={10000}
-            step={50}
-            value={photo.adjustments.temperature}
-            display={`${Math.round(photo.adjustments.temperature)}K`}
-            onChange={(v) => updateAdjustments(photo.id, { temperature: v })}
-          />
-          <div class="row">
-            <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>
-              Neutral picker
-            </button>
+          <div class="control">
+            <Slider
+              label="Temperature"
+              min={2500}
+              max={10000}
+              step={50}
+              value={photo.adjustments.temperature}
+              display={`${Math.round(photo.adjustments.temperature)}K`}
+              onChange={(v) => updateAdjustments(photo.id, { temperature: v })}
+            />
+            <div class="row">
+              <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>Neutral picker</button>
+            </div>
           </div>
-          <p class="hint">click a neutral area in the image to fix white balance</p>
         {/if}
 
-        <div class="crop-controls">
+        <div class="control">
           <div class="presets">
-            <button class:active={activePreset === 'free'} onclick={() => applyPreset('free')}>Free</button>
-            <button class:active={activePreset === '1:1'} onclick={() => applyPreset('1:1')}>1:1</button>
-            <button class:active={activePreset === '3:2'} onclick={() => applyPreset('3:2')}>3:2</button>
-            <button class:active={activePreset === '2:3'} onclick={() => applyPreset('2:3')}>2:3</button>
+            <button onclick={() => applyPreset(1)}>1:1</button>
+            <button onclick={() => applyPreset(2 / 3)}>2:3</button>
+            <button onclick={() => applyPreset(3 / 2)}>3:2</button>
+            <button onclick={resetCrop}>Original</button>
           </div>
-          <button class="reset-crop" onclick={resetCrop}>Reset crop</button>
-          <p class="hint">Drag handles to resize · drag inside to move · hold Shift to keep ratio</p>
+          <p class="hint">Drag handles to resize · drag inside to move · Shift keeps ratio</p>
         </div>
+
+        <div class="info">
+          <p class="line">{photo.sourceType === 'raw' ? 'RAW' : 'JPEG'} · {photo.fullWidth} × {photo.fullHeight}</p>
+          <p class="line">output {photo.width} × {photo.height} px</p>
+        </div>
+
+        <button class="close" onclick={onClose}>Close</button>
       </div>
     </div>
   </div>
@@ -330,35 +317,48 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(6, 5, 4, 0.78);
+    background: rgba(6, 5, 4, 0.82);
     backdrop-filter: blur(6px);
     display: flex;
-    align-items: center;
-    justify-content: center;
+    padding: 12px;
     z-index: 100;
-    padding: 20px;
   }
   .panel {
-    --img-edge: min(58vh, 520px);
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
     background: var(--surface);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-lg);
-    width: min(1120px, 96vw);
-    max-height: 94vh;
-    overflow: auto;
-    padding: 20px;
+    padding: 16px;
     display: flex;
     flex-direction: column;
-    gap: 18px;
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+    gap: 14px;
+    overflow: hidden;
   }
-  header {
+  .body {
+    flex: 1;
+    min-height: 0;
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
+    gap: 20px;
   }
-  header strong {
+  .left {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .right {
+    flex: 0 0 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .name {
+    font-family: var(--font-mono);
     font-weight: 500;
     font-size: 13px;
     letter-spacing: 0.04em;
@@ -367,38 +367,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .body {
-    display: flex;
-    gap: 24px;
-    align-items: flex-start;
-  }
-  .left {
-    flex: 0 0 auto;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-  .right {
-    flex: 1 1 auto;
-    min-width: 300px;
-    max-width: 380px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
   .preview {
     position: relative;
     background: var(--bg-raise);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
-    width: var(--img-edge);
     aspect-ratio: 1 / 1;
-    flex-shrink: 0;
-    user-select: none;
-  }
-  .hist-wrap {
-    width: var(--img-edge);
+    width: min(100%, calc(100vh - 64px));
   }
   .stage {
     position: relative;
@@ -447,17 +423,15 @@
   .h-s  { top: 100%; left: 50%; transform: translate(-50%, -50%); cursor: ns-resize; }
   .h-sw { top: 100%; left: 0; transform: translate(-50%, -50%); cursor: nesw-resize; }
   .h-w  { top: 50%; left: 0; transform: translate(-50%, -50%); cursor: ew-resize; }
+  .control {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
   .row {
     display: flex;
     align-items: center;
     gap: 10px;
-  }
-  .slider-row {
-    gap: 10px;
-  }
-  .grow {
-    flex: 1;
-    min-width: 0;
   }
   .row .active {
     border-color: var(--accent);
@@ -469,26 +443,33 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    flex-wrap: wrap;
   }
   .presets button {
-    padding: 6px 10px;
-  }
-  .reset-crop {
-    margin-top: 6px;
-    width: 100%;
+    flex: 1;
+    padding: 8px 6px;
+    font-size: 12px;
   }
   .hint {
     color: var(--faint);
     font-size: 11px;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.03em;
+    line-height: 1.4;
   }
-  .crop-controls {
+  .info {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 2px;
     border-top: 1px solid var(--border);
-    padding-top: 14px;
-    margin-top: 2px;
+    padding-top: 10px;
+  }
+  .info .line {
+    color: var(--faint);
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    margin: 0;
+  }
+  .close {
+    margin-top: auto;
+    width: 100%;
   }
 </style>

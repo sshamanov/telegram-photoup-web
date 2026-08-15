@@ -44,7 +44,7 @@ test('Reset crop restores the full frame', async ({ page }) => {
   await page.getByRole('button', { name: '1:1' }).click()
   const shrunk = (await page.locator('.crop-box').boundingBox())!
 
-  await page.getByRole('button', { name: 'Reset crop' }).click()
+  await page.getByRole('button', { name: 'Original' }).click()
   const full = (await page.locator('.crop-box').boundingBox())!
 
   expect(full.width).toBeGreaterThan(shrunk.width)

@@ -67,7 +67,7 @@
   }
 
   .img {
-    aspect-ratio: 4 / 3;
+    aspect-ratio: 1 / 1;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -79,7 +79,7 @@
   img {
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    object-fit: cover;
     display: block;
   }
   .placeholder {

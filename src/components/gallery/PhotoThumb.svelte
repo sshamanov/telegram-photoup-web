@@ -121,12 +121,13 @@
     position: absolute;
     top: 8px;
     left: 8px;
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
+    padding: 0;
     margin: 0;
     -webkit-appearance: none;
     appearance: none;
-    border-radius: 0;
+    border-radius: 4px;
     background: rgba(13, 11, 9, 0.7);
     border: 1.5px solid var(--border-strong);
     cursor: pointer;

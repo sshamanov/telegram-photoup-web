@@ -26,3 +26,16 @@ test('login → upload → processed thumbnail → select group → send', async
   await page.getByRole('button', { name: /Send 1 selected/ }).click()
   await expect(page.getByText(/Sent 1 photo/)).toBeVisible()
 })
+
+test('logout returns to the auth screen', async ({ page }) => {
+  await page.goto('/')
+
+  await page.getByPlaceholder('+1234567890').fill('+1234567890')
+  await page.getByRole('button', { name: 'Send code' }).click()
+  await page.getByPlaceholder('Code').fill('12345')
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByText('Send to')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Logout' }).click()
+  await expect(page.getByPlaceholder('+1234567890')).toBeVisible()
+})

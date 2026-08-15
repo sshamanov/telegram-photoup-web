@@ -47,3 +47,17 @@ export function handleSessionExpired(): void {
   session.set({ session: null })
   pushToast('error', 'Session expired — please log in again')
 }
+
+/** Sign out of the current account and return to the auth screen. */
+export async function logout(): Promise<void> {
+  try {
+    await getCurrentAdapter().logout()
+  } catch {
+    // best-effort — clear local state even if the network logout fails
+  } finally {
+    localStorage.removeItem('session')
+    localStorage.removeItem('phone')
+    authState.set('idle')
+    session.set({ phone: undefined, session: null })
+  }
+}

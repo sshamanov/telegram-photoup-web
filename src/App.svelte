@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { authState, getCurrentAdapter } from './stores/telegram'
+  import { authState, getCurrentAdapter, logout } from './stores/telegram'
   import { photos, clearPhotos, renderExports, ensureBase, releaseBase } from './stores/photos'
   import { settings } from './stores/settings'
   import { pushToast } from './stores/ui'
@@ -15,6 +15,7 @@
   let editingId: string | null = null
   let sending = false
   let sendProgress = 0
+  let loggingOut = false
 
   $: selectedPhotos = $photos.filter((p) => p.selected && p.status === 'ready')
   $: editingPhoto = $photos.find((p) => p.id === editingId) ?? null
@@ -27,6 +28,16 @@
   function closeEditor(): void {
     if (editingId) releaseBase(editingId)
     editingId = null
+  }
+
+  async function onLogout(): Promise<void> {
+    loggingOut = true
+    try {
+      await logout()
+      clearPhotos()
+    } finally {
+      loggingOut = false
+    }
   }
 
   async function send(): Promise<void> {
@@ -68,6 +79,7 @@
       <div class="actions">
         <GroupSelector />
         <button class="reset" onclick={clearPhotos} disabled={$photos.length === 0}>Reset</button>
+        <button class="logout" onclick={onLogout} disabled={loggingOut}>Logout</button>
       </div>
     </header>
 
@@ -123,10 +135,12 @@
     align-items: center;
     gap: 10px;
   }
-  button.reset {
+  button.reset,
+  button.logout {
     color: var(--faint);
   }
-  button.reset:not(:disabled):hover {
+  button.reset:not(:disabled):hover,
+  button.logout:not(:disabled):hover {
     border-color: var(--danger);
     color: var(--danger);
   }

@@ -14,6 +14,7 @@
 
   let editingId: string | null = null
   let sending = false
+  let exporting = false
   let sendProgress = 0
   let loggingOut = false
 
@@ -41,6 +42,7 @@
   }
 
   async function send(): Promise<void> {
+    if (sending) return
     const groupId = $settings.targetGroupId
     if (!groupId) {
       pushToast('error', 'Select a target group first')
@@ -52,11 +54,12 @@
     }
 
     const ids = selectedPhotos.map((p) => p.id)
-    const payload: UploadPhoto[] = await renderExports(ids)
-
     sending = true
+    exporting = true
     sendProgress = 0
     try {
+      const payload: UploadPhoto[] = await renderExports(ids)
+      exporting = false
       await getCurrentAdapter().sendPhotos(groupId, payload, (progress) => {
         sendProgress = progress
       })
@@ -66,6 +69,7 @@
       pushToast('error', error instanceof Error ? error.message : String(error))
     } finally {
       sending = false
+      exporting = false
     }
   }
 </script>
@@ -96,7 +100,9 @@
 
     <footer>
       <button onclick={send} disabled={sending || selectedPhotos.length === 0}>
-        {#if sending}
+        {#if exporting}
+          <span>Preparing…</span>
+        {:else if sending}
           <span class="bar"><span class="fill" style="width:{Math.round(sendProgress * 100)}%"></span></span>
           <span>Sending {Math.round(sendProgress * 100)}%</span>
         {:else}

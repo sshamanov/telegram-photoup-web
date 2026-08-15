@@ -112,6 +112,18 @@ async function encodeExport(canvas: OffscreenCanvas): Promise<Blob> {
   return encodeJpeg444InWorker(imageData, { quality: 100, chroma: 1 })
 }
 
+/** 256-bin luminance histogram over the final sRGB pixels (post exposure/WB/rolloff). */
+function computeHistogram(canvas: OffscreenCanvas): Uint32Array {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+  const bins = new Uint32Array(256)
+  for (let i = 0; i < data.length; i += 4) {
+    const l = 0.2126 * data[i]! + 0.7152 * data[i + 1]! + 0.0722 * data[i + 2]!
+    bins[l | 0]!++
+  }
+  return bins
+}
+
 export interface RenderedResult {
   canvas: OffscreenCanvas
   autoEV: number
@@ -253,12 +265,13 @@ export async function renderThumb(
   base: DecodedBase,
   adjustments: Adjustments,
   thumbEdge = 512,
-): Promise<{ blob: Blob; autoEV: number; width: number; height: number }> {
+): Promise<{ blob: Blob; autoEV: number; width: number; height: number; histogram: Uint32Array }> {
   const rect = cropRect(base.width, base.height, adjustments.crop)
   const size = fitWithin(rect.width, rect.height, thumbEdge)
   const { canvas, autoEV } = await base.render(adjustments.crop, size, adjustments)
+  const histogram = computeHistogram(canvas)
   const blob = await encodeThumbnail(canvas)
-  return { blob, autoEV, width: size.width, height: size.height }
+  return { blob, autoEV, width: size.width, height: size.height, histogram }
 }
 
 export async function renderExport(

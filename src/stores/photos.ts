@@ -24,6 +24,7 @@ export interface Photo {
   width: number
   height: number
   autoEV: number | null
+  histogram: Uint32Array | null
   error: string | null
 }
 
@@ -95,7 +96,7 @@ async function refreshThumb(id: string, releaseAfter: boolean): Promise<void> {
     })
 
     const dims = exportDimensions(base, latest.adjustments)
-    const { blob, autoEV } = await renderThumb(base, latest.adjustments)
+    const { blob, autoEV, histogram } = await renderThumb(base, latest.adjustments)
 
     const current = get(photos).find((p) => p.id === id)
     if (!current) return
@@ -106,6 +107,7 @@ async function refreshThumb(id: string, releaseAfter: boolean): Promise<void> {
       width: dims.width,
       height: dims.height,
       autoEV,
+      histogram,
     })
 
     if (releaseAfter) releaseBase(id)
@@ -146,6 +148,7 @@ export function addPhotos(files: File[]): void {
     width: 0,
     height: 0,
     autoEV: null,
+    histogram: null,
     error: null,
   }))
   photos.update((list) => [...list, ...items])

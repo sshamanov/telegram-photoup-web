@@ -4,6 +4,7 @@
   import { pushToast } from '../../stores/ui'
   import type { NormalizedCrop } from '../../lib/image/types'
   import Slider from './Slider.svelte'
+  import Histogram from './Histogram.svelte'
 
   export let photo: Photo
   export let onClose: () => void = () => {}
@@ -138,6 +139,8 @@
         {/if}
       </div>
     </div>
+
+    <Histogram bins={photo.histogram} />
 
     <div class="controls">
       <div class="row">

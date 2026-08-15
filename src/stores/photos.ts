@@ -23,6 +23,8 @@ export interface Photo {
   thumbUrl: string | null
   width: number
   height: number
+  fullWidth: number
+  fullHeight: number
   autoEV: number | null
   histogram: Uint32Array | null
   error: string | null
@@ -106,6 +108,8 @@ async function refreshThumb(id: string, releaseAfter: boolean): Promise<void> {
       thumbUrl: URL.createObjectURL(blob),
       width: dims.width,
       height: dims.height,
+      fullWidth: base.width,
+      fullHeight: base.height,
       autoEV,
       histogram,
     })
@@ -147,6 +151,8 @@ export function addPhotos(files: File[]): void {
     thumbUrl: null,
     width: 0,
     height: 0,
+    fullWidth: 0,
+    fullHeight: 0,
     autoEV: null,
     histogram: null,
     error: null,

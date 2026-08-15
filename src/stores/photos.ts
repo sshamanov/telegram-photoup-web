@@ -21,6 +21,7 @@ export interface Photo {
   selected: boolean
   adjustments: Adjustments
   thumbUrl: string | null
+  fullThumbUrl: string | null
   width: number
   height: number
   fullWidth: number
@@ -99,13 +100,17 @@ async function refreshThumb(id: string, releaseAfter: boolean): Promise<void> {
 
     const dims = exportDimensions(base, latest.adjustments)
     const { blob, autoEV, histogram } = await renderThumb(base, latest.adjustments)
+    // The full (uncropped) preview is the crop editor's working surface.
+    const full = await renderThumb(base, { ...latest.adjustments, crop: null })
 
     const current = get(photos).find((p) => p.id === id)
     if (!current) return
     if (current.thumbUrl) URL.revokeObjectURL(current.thumbUrl)
+    if (current.fullThumbUrl) URL.revokeObjectURL(current.fullThumbUrl)
     patchPhoto(id, {
       status: 'ready',
       thumbUrl: URL.createObjectURL(blob),
+      fullThumbUrl: URL.createObjectURL(full.blob),
       width: dims.width,
       height: dims.height,
       fullWidth: base.width,
@@ -149,6 +154,7 @@ export function addPhotos(files: File[]): void {
     selected: true,
     adjustments: { ...neutralAdjustments, exposureMode: 'auto' },
     thumbUrl: null,
+    fullThumbUrl: null,
     width: 0,
     height: 0,
     fullWidth: 0,
@@ -198,6 +204,7 @@ export function clearPhotos(): void {
   releaseAllBases()
   for (const p of get(photos)) {
     if (p.thumbUrl) URL.revokeObjectURL(p.thumbUrl)
+    if (p.fullThumbUrl) URL.revokeObjectURL(p.fullThumbUrl)
   }
   photos.set([])
 }

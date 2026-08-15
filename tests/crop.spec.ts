@@ -9,82 +9,90 @@ async function login(page: import('@playwright/test').Page): Promise<void> {
   await expect(page.getByText('Send to')).toBeVisible()
 }
 
-async function openCrop(page: import('@playwright/test').Page): Promise<void> {
+async function openEditor(page: import('@playwright/test').Page): Promise<void> {
   await page.setInputFiles('input[type=file]', 'tests/fixtures/200x100.png')
   await expect(page.getByAltText('200x100.png')).toBeVisible({ timeout: 10_000 })
   await page.getByAltText('200x100.png').click()
-  await expect(page.getByRole('button', { name: 'Crop' })).toBeVisible()
-  await page.getByRole('button', { name: 'Crop' }).click()
+  // Crop mode is on by default — the frame and handles are immediately visible.
   await expect(page.locator('.h-se')).toBeVisible()
 }
 
-test('crop frame resizes the image via a corner handle', async ({ page }) => {
+test('crop persists as the new image after Apply and Close', async ({ page }) => {
   await login(page)
-  await openCrop(page)
+  await openEditor(page)
 
-  const img = page.locator('.stage img')
-  const before = await img.evaluate((el) => (el as HTMLImageElement).naturalWidth)
-  expect(before).toBe(200)
-
+  const box = (await page.locator('.crop-box').boundingBox())!
   const hb = (await page.locator('.h-se').boundingBox())!
-  const sb = (await page.locator('.stage').boundingBox())!
+
   await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
   await page.mouse.down()
-  await page.mouse.move(sb.x + sb.width * 0.6, sb.y + sb.height * 0.6, { steps: 6 })
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5, { steps: 6 })
   await page.mouse.up()
 
   await page.getByRole('button', { name: 'Apply' }).click()
+  await page.getByRole('button', { name: 'Close' }).click()
 
+  // The grid thumbnail now reflects the applied crop.
+  const gridImg = page.locator('.thumb img')
   await expect
-    .poll(async () => img.evaluate((el) => (el as HTMLImageElement).naturalWidth))
-    .toBeLessThan(before)
+    .poll(async () => gridImg.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+    .toBeLessThan(200)
 })
 
-test('cancel discards the crop and keeps the original frame', async ({ page }) => {
+test('Reset crop restores the full frame', async ({ page }) => {
   await login(page)
-  await openCrop(page)
+  await openEditor(page)
 
-  const img = page.locator('.stage img')
-  const before = await img.evaluate((el) => (el as HTMLImageElement).naturalWidth)
+  await page.getByRole('button', { name: '1:1' }).click()
+  const shrunk = (await page.locator('.crop-box').boundingBox())!
 
-  const hb = (await page.locator('.h-se').boundingBox())!
-  const sb = (await page.locator('.stage').boundingBox())!
-  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
-  await page.mouse.down()
-  await page.mouse.move(sb.x + sb.width * 0.5, sb.y + sb.height * 0.5, { steps: 6 })
-  await page.mouse.up()
+  await page.getByRole('button', { name: 'Reset crop' }).click()
+  const full = (await page.locator('.crop-box').boundingBox())!
 
-  await page.getByRole('button', { name: 'Cancel' }).click()
-
-  await expect.poll(async () => img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBe(before)
+  expect(full.width).toBeGreaterThan(shrunk.width)
 })
 
 test('1:1 preset produces a square crop frame', async ({ page }) => {
   await login(page)
-  await openCrop(page)
+  await openEditor(page)
 
   await page.getByRole('button', { name: '1:1' }).click()
-
   const box = (await page.locator('.crop-box').boundingBox())!
-  // The 200x100 image cropped square: crop-box width and height must be equal.
   expect(Math.abs(box.width - box.height)).toBeLessThan(1)
 })
 
 test('Shift+drag keeps the crop aspect ratio', async ({ page }) => {
   await login(page)
-  await openCrop(page)
+  await openEditor(page)
+
+  const box = (await page.locator('.crop-box').boundingBox())!
+  const aspect = box.width / box.height // 2:1 for the 200x100 fixture
 
   const hb = (await page.locator('.h-se').boundingBox())!
-  const sb = (await page.locator('.stage').boundingBox())!
-
   await page.keyboard.down('Shift')
   await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
   await page.mouse.down()
-  // Off-diagonal target — without Shift this would distort to ~3:1, Shift keeps 2:1.
-  await page.mouse.move(sb.x + sb.width * 0.6, sb.y + sb.height * 0.4, { steps: 6 })
+  // Off-diagonal target — without Shift this would distort, Shift keeps 2:1.
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.3, { steps: 6 })
   await page.mouse.up()
   await page.keyboard.up('Shift')
 
+  const after = (await page.locator('.crop-box').boundingBox())!
+  expect(after.width / after.height).toBeCloseTo(aspect, 1)
+})
+
+test('re-opening the editor shows the old crop for refinement', async ({ page }) => {
+  await login(page)
+  await openEditor(page)
+
+  await page.getByRole('button', { name: '1:1' }).click()
+  await page.getByRole('button', { name: 'Apply' }).click()
+  await page.getByRole('button', { name: 'Close' }).click()
+
+  await page.getByAltText('200x100.png').click()
+  await expect(page.locator('.h-se')).toBeVisible()
+
+  // The applied square crop is shown over the full image for easy refinement.
   const box = (await page.locator('.crop-box').boundingBox())!
-  expect(box.width / box.height).toBeCloseTo(2, 1)
+  expect(Math.abs(box.width - box.height)).toBeLessThan(1)
 })

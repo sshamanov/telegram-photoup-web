@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import type { Photo } from '../../stores/photos'
   import { updateAdjustments, resetAdjustments } from '../../stores/photos'
   import { pushToast } from '../../stores/ui'
@@ -24,7 +25,8 @@
 
   let previewEl: HTMLImageElement | null = null
   let stageEl: HTMLDivElement | null = null
-  let cropMode = false
+  let stageW = 0
+  let stageH = 0
   let pickingNeutral = false
   let draftCrop: NormalizedCrop | null = null
   let drag: DragState | null = null
@@ -34,6 +36,28 @@
   $: shownEV = photo.adjustments.exposureMode === 'auto'
     ? (photo.autoEV ?? photo.adjustments.exposureEV)
     : photo.adjustments.exposureEV
+
+  // The letterboxed rect of the image *content* within the square stage (CSS px).
+  $: contentRect = (() => {
+    const iw = photo.fullWidth || 1
+    const ih = photo.fullHeight || 1
+    if (!stageW || !stageH) return { x: 0, y: 0, width: 1, height: 1 }
+    const scale = Math.min(stageW / iw, stageH / ih)
+    const w = iw * scale
+    const h = ih * scale
+    return { x: (stageW - w) / 2, y: (stageH - h) / 2, width: w, height: h }
+  })()
+
+  $: boxStyle = draftCrop
+    ? `left:${contentRect.x + draftCrop.x * contentRect.width}px;` +
+      `top:${contentRect.y + draftCrop.y * contentRect.height}px;` +
+      `width:${draftCrop.width * contentRect.width}px;` +
+      `height:${draftCrop.height * contentRect.height}px`
+    : ''
+
+  onMount(() => {
+    draftCrop = photo.adjustments.crop ?? { x: 0, y: 0, width: 1, height: 1 }
+  })
 
   function clamp(v: number, min: number, max: number): number {
     return v < min ? min : v > max ? max : v
@@ -49,24 +73,8 @@
 
   function reset(): void {
     resetAdjustments(photo.id)
-  }
-
-  function enterCropMode(): void {
-    draftCrop = photo.adjustments.crop ?? { x: 0, y: 0, width: 1, height: 1 }
+    draftCrop = { x: 0, y: 0, width: 1, height: 1 }
     activePreset = 'free'
-    cropMode = true
-    pickingNeutral = false
-  }
-
-  function exitCropMode(): void {
-    cropMode = false
-    draftCrop = null
-    drag = null
-  }
-
-  function toggleCrop(): void {
-    if (cropMode) exitCropMode()
-    else enterCropMode()
   }
 
   function applyPreset(preset: Preset): void {
@@ -97,12 +105,12 @@
         draftCrop.height >= 0.995
       updateAdjustments(photo.id, { crop: isFull ? null : draftCrop })
     }
-    exitCropMode()
   }
 
-  function clearCrop(): void {
+  function resetCrop(): void {
     updateAdjustments(photo.id, { crop: null })
-    exitCropMode()
+    draftCrop = { x: 0, y: 0, width: 1, height: 1 }
+    activePreset = 'free'
   }
 
   function startMove(event: PointerEvent): void {
@@ -161,9 +169,8 @@
 
   function onWindowPointerMove(event: PointerEvent): void {
     if (!drag || !stageEl) return
-    const rect = stageEl.getBoundingClientRect()
-    const dx = (event.clientX - drag.startX) / rect.width
-    const dy = (event.clientY - drag.startY) / rect.height
+    const dx = (event.clientX - drag.startX) / contentRect.width
+    const dy = (event.clientY - drag.startY) / contentRect.height
     const c = drag.startCrop
 
     if (drag.kind === 'move') {
@@ -186,7 +193,6 @@
   }
 
   function onStagePointerDown(event: MouseEvent): void {
-    if (cropMode) return
     if (pickingNeutral) void pickNeutral(event)
   }
 
@@ -194,8 +200,8 @@
     const img = previewEl
     if (!img || !img.naturalWidth) return
     const rect = img.getBoundingClientRect()
-    const x = (event.clientX - rect.left) / rect.width
-    const y = (event.clientY - rect.top) / rect.height
+    const x = (event.clientX - rect.left - contentRect.x) / contentRect.width
+    const y = (event.clientY - rect.top - contentRect.y) / contentRect.height
     const canvas = document.createElement('canvas')
     canvas.width = img.naturalWidth
     canvas.height = img.naturalHeight
@@ -230,24 +236,26 @@
       </div>
     </header>
 
-    <div class="preview" class:crop-mode={cropMode} class:picking={pickingNeutral}>
+    <div class="preview" class:picking={pickingNeutral}>
       <div
         class="stage"
         bind:this={stageEl}
+        bind:clientWidth={stageW}
+        bind:clientHeight={stageH}
         role="img"
         aria-label={photo.name}
         onpointerdown={onStagePointerDown}
       >
-        {#if photo.thumbUrl}
+        {#if photo.fullThumbUrl}
           <!-- svelte-ignore a11y-click-events-have-key-events -->
-          <img bind:this={previewEl} src={photo.thumbUrl} alt={photo.name} />
+          <img bind:this={previewEl} src={photo.fullThumbUrl} alt={photo.name} />
         {/if}
-        {#if cropMode && draftCrop}
+        {#if draftCrop}
           <div
             class="crop-box"
             role="group"
             aria-label="Crop area — drag inside to move"
-            style="left:{draftCrop.x * 100}%;top:{draftCrop.y * 100}%;width:{draftCrop.width * 100}%;height:{draftCrop.height * 100}%"
+            style={boxStyle}
             onpointerdown={startMove}
           >
             <button type="button" class="h h-nw" data-handle="nw" aria-label="Resize crop top-left" onpointerdown={(e) => startResize(e, 'nw')}></button>
@@ -301,23 +309,17 @@
 
       <div class="crop-controls">
         <div class="row">
-          <button class:active={cropMode} onclick={toggleCrop}>Crop</button>
-          {#if cropMode}
-            <span class="presets">
-              <button class:active={activePreset === 'free'} onclick={() => applyPreset('free')}>Free</button>
-              <button class:active={activePreset === '1:1'} onclick={() => applyPreset('1:1')}>1:1</button>
-              <button class:active={activePreset === '3:2'} onclick={() => applyPreset('3:2')}>3:2</button>
-              <button class:active={activePreset === '2:3'} onclick={() => applyPreset('2:3')}>2:3</button>
-            </span>
-            <span class="spacer"></span>
-            <button class="primary" onclick={applyCrop}>Apply</button>
-            <button onclick={exitCropMode}>Cancel</button>
-            <button onclick={clearCrop}>Remove</button>
-          {/if}
+          <span class="presets">
+            <button class:active={activePreset === 'free'} onclick={() => applyPreset('free')}>Free</button>
+            <button class:active={activePreset === '1:1'} onclick={() => applyPreset('1:1')}>1:1</button>
+            <button class:active={activePreset === '3:2'} onclick={() => applyPreset('3:2')}>3:2</button>
+            <button class:active={activePreset === '2:3'} onclick={() => applyPreset('2:3')}>2:3</button>
+          </span>
+          <span class="spacer"></span>
+          <button class="primary" onclick={applyCrop}>Apply</button>
+          <button onclick={resetCrop}>Reset crop</button>
         </div>
-        {#if cropMode}
-          <p class="hint">Drag handles to resize · drag inside to move · hold Shift to keep ratio</p>
-        {/if}
+        <p class="hint">Drag handles to resize · drag inside to move · hold Shift to keep ratio</p>
       </div>
     </div>
   </div>
@@ -375,9 +377,6 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
-    display: flex;
-    justify-content: center;
-    align-items: center;
     width: min(100%, 62vh);
     aspect-ratio: 1 / 1;
     flex-shrink: 0;
@@ -390,28 +389,12 @@
     height: 100%;
     line-height: 0;
   }
-  .preview img {
+  .stage img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     display: block;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
-  }
-  /* Crop / neutral-pick: show the full image (contain) so coordinates map correctly. */
-  .preview.crop-mode .stage,
-  .preview.picking .stage {
-    width: auto;
-    height: auto;
-    max-width: 100%;
-    max-height: 100%;
-  }
-  .preview.crop-mode img,
-  .preview.picking img {
-    width: auto;
-    height: auto;
-    max-width: 100%;
-    max-height: 62vh;
-    object-fit: contain;
   }
   .crop-box {
     position: absolute;
@@ -419,6 +402,9 @@
     background: rgba(255, 122, 69, 0.06);
     box-shadow: 0 0 0 9999px rgba(6, 5, 4, 0.45);
     cursor: move;
+  }
+  .preview.picking .crop-box {
+    pointer-events: none;
   }
   .h {
     position: absolute;

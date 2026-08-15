@@ -9,16 +9,28 @@
   export let photo: Photo
   export let onClose: () => void = () => {}
 
+  type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
+  type DragState =
+    | { kind: 'move'; startX: number; startY: number; startCrop: NormalizedCrop }
+    | { kind: 'resize'; handle: Handle; startX: number; startY: number; startCrop: NormalizedCrop }
+
   let previewEl: HTMLImageElement | null = null
+  let stageEl: HTMLDivElement | null = null
   let cropMode = false
   let pickingNeutral = false
-  let dragStart: { x: number; y: number } | null = null
   let draftCrop: NormalizedCrop | null = null
+  let drag: DragState | null = null
+
+  const MIN_CROP = 0.05
 
   $: isRaw = photo.sourceType === 'raw'
   $: shownEV = photo.adjustments.exposureMode === 'auto'
     ? (photo.autoEV ?? photo.adjustments.exposureEV)
     : photo.adjustments.exposureEV
+
+  function clamp(v: number, min: number, max: number): number {
+    return v < min ? min : v > max ? max : v
+  }
 
   function setExposure(v: number): void {
     updateAdjustments(photo.id, { exposureMode: 'manual', exposureEV: v })
@@ -32,40 +44,31 @@
     resetAdjustments(photo.id)
   }
 
-  function onPointerDown(event: MouseEvent): void {
-    if (cropMode) {
-      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-      dragStart = { x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height }
-      draftCrop = { x: dragStart.x, y: dragStart.y, width: 0, height: 0 }
-      return
-    }
-    if (pickingNeutral) {
-      void pickNeutral(event)
-    }
+  function enterCropMode(): void {
+    draftCrop = photo.adjustments.crop ?? { x: 0, y: 0, width: 1, height: 1 }
+    cropMode = true
+    pickingNeutral = false
   }
 
-  function onPointerMove(event: MouseEvent): void {
-    if (!cropMode || !dragStart) return
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-    const cx = (event.clientX - rect.left) / rect.width
-    const cy = (event.clientY - rect.top) / rect.height
-    draftCrop = {
-      x: Math.min(dragStart.x, cx),
-      y: Math.min(dragStart.y, cy),
-      width: Math.abs(cx - dragStart.x),
-      height: Math.abs(cy - dragStart.y),
-    }
+  function exitCropMode(): void {
+    cropMode = false
+    draftCrop = null
+    drag = null
   }
 
-  function onPointerUp(): void {
-    dragStart = null
+  function toggleCrop(): void {
+    if (cropMode) exitCropMode()
+    else enterCropMode()
   }
 
   function applyCrop(): void {
-    // eslint-disable-next-line no-console
-    console.log('[photoup:crop] apply', draftCrop)
-    if (draftCrop && draftCrop.width > 0.02 && draftCrop.height > 0.02) {
-      updateAdjustments(photo.id, { crop: draftCrop })
+    if (draftCrop) {
+      const isFull =
+        draftCrop.x <= 0.005 &&
+        draftCrop.y <= 0.005 &&
+        draftCrop.width >= 0.995 &&
+        draftCrop.height >= 0.995
+      updateAdjustments(photo.id, { crop: isFull ? null : draftCrop })
     }
     exitCropMode()
   }
@@ -75,10 +78,60 @@
     exitCropMode()
   }
 
-  function exitCropMode(): void {
-    cropMode = false
-    dragStart = null
-    draftCrop = null
+  function startMove(event: MouseEvent): void {
+    if (!draftCrop) return
+    drag = { kind: 'move', startX: event.clientX, startY: event.clientY, startCrop: { ...draftCrop } }
+  }
+
+  function startResize(event: MouseEvent, handle: Handle): void {
+    event.stopPropagation()
+    if (!draftCrop) return
+    drag = { kind: 'resize', handle, startX: event.clientX, startY: event.clientY, startCrop: { ...draftCrop } }
+  }
+
+  function onWindowPointerMove(event: PointerEvent): void {
+    if (!drag || !stageEl) return
+    const rect = stageEl.getBoundingClientRect()
+    const dx = (event.clientX - drag.startX) / rect.width
+    const dy = (event.clientY - drag.startY) / rect.height
+    const c = drag.startCrop
+
+    if (drag.kind === 'move') {
+      draftCrop = {
+        x: clamp(c.x + dx, 0, 1 - c.width),
+        y: clamp(c.y + dy, 0, 1 - c.height),
+        width: c.width,
+        height: c.height,
+      }
+      return
+    }
+
+    const handle = drag.handle
+    let x = c.x
+    let y = c.y
+    let width = c.width
+    let height = c.height
+
+    if (handle.includes('e')) width = clamp(c.width + dx, MIN_CROP, 1 - c.x)
+    if (handle.includes('s')) height = clamp(c.height + dy, MIN_CROP, 1 - c.y)
+    if (handle.includes('w')) {
+      x = clamp(c.x + dx, 0, c.x + c.width - MIN_CROP)
+      width = c.x + c.width - x
+    }
+    if (handle.includes('n')) {
+      y = clamp(c.y + dy, 0, c.y + c.height - MIN_CROP)
+      height = c.y + c.height - y
+    }
+    draftCrop = { x, y, width, height }
+  }
+
+  function onWindowPointerUp(): void {
+    drag = null
+  }
+
+  function onStagePointerDown(event: MouseEvent): void {
+    if (cropMode) return
+    if (pickingNeutral) void pickNeutral(event)
   }
 
   async function pickNeutral(event: MouseEvent): Promise<void> {
@@ -111,6 +164,8 @@
   $: cropOverlay = draftCrop ?? photo.adjustments.crop
 </script>
 
+<svelte:window onpointermove={onWindowPointerMove} onpointerup={onWindowPointerUp} />
+
 <div class="overlay">
   <div class="panel">
     <header>
@@ -121,11 +176,10 @@
     <div class="preview" class:crop-mode={cropMode}>
       <div
         class="stage"
+        bind:this={stageEl}
         role="img"
         aria-label={photo.name}
-        onpointerdown={onPointerDown}
-        onpointermove={onPointerMove}
-        onpointerup={onPointerUp}
+        onpointerdown={onStagePointerDown}
       >
         {#if photo.thumbUrl}
           <!-- svelte-ignore a11y-click-events-have-key-events -->
@@ -134,8 +188,22 @@
         {#if cropOverlay}
           <div
             class="crop-box"
+            role="group"
+            aria-label="Crop area — drag inside to move"
             style="left:{cropOverlay.x * 100}%;top:{cropOverlay.y * 100}%;width:{cropOverlay.width * 100}%;height:{cropOverlay.height * 100}%"
-          ></div>
+            onpointerdown={startMove}
+          >
+            {#if cropMode}
+              <button type="button" class="h h-nw" data-handle="nw" aria-label="Resize crop top-left" onpointerdown={(e) => startResize(e, 'nw')}></button>
+              <button type="button" class="h h-n" data-handle="n" aria-label="Resize crop top" onpointerdown={(e) => startResize(e, 'n')}></button>
+              <button type="button" class="h h-ne" data-handle="ne" aria-label="Resize crop top-right" onpointerdown={(e) => startResize(e, 'ne')}></button>
+              <button type="button" class="h h-e" data-handle="e" aria-label="Resize crop right" onpointerdown={(e) => startResize(e, 'e')}></button>
+              <button type="button" class="h h-se" data-handle="se" aria-label="Resize crop bottom-right" onpointerdown={(e) => startResize(e, 'se')}></button>
+              <button type="button" class="h h-s" data-handle="s" aria-label="Resize crop bottom" onpointerdown={(e) => startResize(e, 's')}></button>
+              <button type="button" class="h h-sw" data-handle="sw" aria-label="Resize crop bottom-left" onpointerdown={(e) => startResize(e, 'sw')}></button>
+              <button type="button" class="h h-w" data-handle="w" aria-label="Resize crop left" onpointerdown={(e) => startResize(e, 'w')}></button>
+            {/if}
+          </div>
         {/if}
       </div>
     </div>
@@ -177,12 +245,16 @@
       {/if}
 
       <div class="row">
-        <button class:active={cropMode} onclick={() => (cropMode = !cropMode)}>Crop</button>
+        <button class:active={cropMode} onclick={toggleCrop}>Crop</button>
         {#if cropMode}
-          <button onclick={applyCrop}>Apply crop</button>
-          <button onclick={clearCrop}>Clear</button>
+          <button onclick={applyCrop}>Apply</button>
+          <button onclick={exitCropMode}>Cancel</button>
+          <button onclick={clearCrop}>Remove</button>
         {/if}
       </div>
+      {#if cropMode}
+        <p class="hint">Drag corners or edges to resize · drag inside the frame to move</p>
+      {/if}
     </div>
   </div>
 </div>
@@ -235,14 +307,18 @@
     overflow: hidden;
     display: flex;
     justify-content: center;
-    align-items: flex-start;
-    max-height: 62vh;
+    align-items: center;
+    width: min(100%, 62vh);
+    aspect-ratio: 1 / 1;
+    flex-shrink: 0;
+    margin: 0 auto;
     user-select: none;
   }
   .stage {
     position: relative;
     flex: 0 0 auto;
     max-width: 100%;
+    max-height: 100%;
     line-height: 0;
   }
   .preview img {
@@ -252,16 +328,41 @@
     display: block;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
   }
-  .preview.crop-mode {
-    cursor: crosshair;
-  }
   .crop-box {
     position: absolute;
     border: 1.5px solid var(--accent);
-    background: rgba(255, 122, 69, 0.12);
+    background: rgba(255, 122, 69, 0.06);
     box-shadow: 0 0 0 9999px rgba(6, 5, 4, 0.45);
     pointer-events: none;
+    cursor: move;
   }
+  .preview.crop-mode .crop-box {
+    pointer-events: auto;
+  }
+  .h {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    margin: 0;
+    border: 1.5px solid var(--accent);
+    border-radius: 3px;
+    background: #f2eadf;
+    box-shadow: 0 0 0 1px rgba(6, 5, 4, 0.5);
+    z-index: 2;
+    transition: transform 0.08s ease;
+  }
+  .h:hover {
+    background: var(--accent);
+  }
+  .h-nw { top: 0; left: 0; transform: translate(-50%, -50%); cursor: nwse-resize; }
+  .h-n  { top: 0; left: 50%; transform: translate(-50%, -50%); cursor: ns-resize; }
+  .h-ne { top: 0; left: 100%; transform: translate(-50%, -50%); cursor: nesw-resize; }
+  .h-e  { top: 50%; left: 100%; transform: translate(-50%, -50%); cursor: ew-resize; }
+  .h-se { top: 100%; left: 100%; transform: translate(-50%, -50%); cursor: nwse-resize; }
+  .h-s  { top: 100%; left: 50%; transform: translate(-50%, -50%); cursor: ns-resize; }
+  .h-sw { top: 100%; left: 0; transform: translate(-50%, -50%); cursor: nesw-resize; }
+  .h-w  { top: 50%; left: 0; transform: translate(-50%, -50%); cursor: ew-resize; }
   .controls {
     display: flex;
     flex-direction: column;

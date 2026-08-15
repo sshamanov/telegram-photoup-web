@@ -32,7 +32,8 @@ sensor recorded full color. photoup:
 - **Thumbnail grid** — every photo shows its *processed* preview, with a
   checkbox selected by default.
 - **Editor** — Reset / Auto / Exposure for every photo; **Temperature +
-  neutral picker + Crop** for RAW; **Crop** for JPEG.
+  neutral picker + Crop** for RAW; **Crop** for JPEG; a live **luminance
+  histogram** showing tonal distribution (and highlight clipping).
 - **Target group** — remembered across reloads.
 - **Maximum quality** — ≤2560px, high-quality JPEG, inline `photo`.
 - **Usage indicator** — live memory/processing status.
@@ -43,8 +44,8 @@ sensor recorded full color. photoup:
 |-------------|------|
 | UI          | Svelte 5 + TypeScript (strict) + Vite |
 | Telegram    | `@mtcute/web` (MTProto client), behind an adapter |
-| RAW decode  | `libraw-wasm` (LibRaw WASM → camera-WB 16-bit RGB) |
-| Processing  | Browser canvas + Web Worker + `@jsquash/jpeg` (4:4:4 mozjpeg) |
+| RAW decode  | `libraw-wasm` (LibRaw WASM → camera-WB 16-bit linear RGB) |
+| Processing  | Browser canvas + Web Worker + `@jsquash/jpeg` (4:4:4 Q100 mozjpeg) |
 | Persistence | `localStorage` (session + settings) |
 | Build/dev   | Docker (`node:20-alpine`, `--network host`) |
 | Tests       | Playwright + mock Telegram adapter |
@@ -54,24 +55,25 @@ sensor recorded full color. photoup:
 
 ```
 File (JPG/PNG/NEF/CR2)
-  └─ decode ── RAW?  dcraw-wasm/libraw-wasm → 16-bit RGB
+  └─ decode ── RAW?  libraw-wasm → 16-bit linear RGB
               └─ else browser decode
   └─ adjust ── RAW: camera WB + [temperature / neutral picker]
-               both: global auto exposure + mild highlight rolloff
-  └─ crop ──── optional manual crop (full-res, before resize)
+               both: global auto exposure + mild highlight rolloff (linear space)
+  └─ crop ──── optional manual crop (applied at render time)
   └─ output ── thumbnail (≤512px)  → grid preview
-               export (≤2560px, JPEG ~95) → send as photo
+               export (≤2560px, JPEG 4:4:4 Q100) → send as photo
 ```
 
 ## Processing concept
 
-- **RAW:** decode → camera WB/color → [temp / neutral picker] → global auto
-  exposure → mild highlight rolloff → crop → resize ≤2560px → sRGB JPEG.
+- **RAW:** decode to 16-bit linear RGB (camera WB) → [temp / neutral picker] →
+  global auto exposure → mild highlight rolloff → crop → resize ≤2560px → sRGB JPEG.
 - **JPEG:** decode → global auto exposure → mild highlight rolloff → crop →
   resize ≤2560px → JPEG.
 
-Reprocessing **always starts from the original decoded source** — never
-cumulatively from an edited preview.
+The source is decoded once and cached; edits re-render only the thumbnail, and
+the export is rendered once at send. Reprocessing **always starts from the
+original decoded source** — never cumulatively from an edited preview.
 
 ## Project layout
 
@@ -89,9 +91,9 @@ Working end-to-end for JPEG/PNG/RAW: upload → auto-exposure → editor (exposu
 crop; RAW: temperature + neutral picker) → album send, with Telegram behind a
 mock adapter for tests.
 
-- **RAW decode**: `libraw-wasm` decodes NEF/CR2 to camera-WB 16-bit RGB
+- **RAW decode**: `libraw-wasm` decodes NEF/CR2 to camera-WB 16-bit linear RGB
   (verified against the D810 NEF and Canon CR2 samples).
-- **Export**: 4:4:4 JPEG (mozjpeg, `chroma_subsample: 1`) or lossless PNG.
+- **Export**: 4:4:4 Q100 JPEG (mozjpeg, `chroma_subsample: 1`).
 
 Deferred:
 - **Real-Telegram upload test** (PNG vs JPEG 4:4:4 round-trip) — needs a live
@@ -115,12 +117,9 @@ cp .env.example .env
 docker-compose up app        # http://localhost:5173
 ```
 
-### Production build
-
-```bash
-docker build -t photoup .
-docker run --rm --network host -p 4173:4173 photoup
-```
+This is the **only** server — there is no separate production/preview service.
+(CI still runs `docker build -t photoup .` as a build gate, but nothing runs a
+second server locally.)
 
 ### Tests
 

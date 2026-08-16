@@ -446,7 +446,8 @@
     overflow: hidden;
   }
   .right {
-    flex: 0 0 320px;
+    flex: 0 0 326px;
+    padding-left: 6px;
     display: flex;
     flex-direction: column;
     gap: 12px;

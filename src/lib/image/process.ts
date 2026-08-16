@@ -29,19 +29,22 @@ function highlightRolloff(x: number): number {
   return knee + softness * (1 - Math.exp(-t))
 }
 
-function gainCoefficients(ev: number, adjustments: Adjustments): { r: number; g: number; b: number } {
+function gainCoefficients(ev: number, adjustments: Adjustments, raw: boolean): { r: number; g: number; b: number } {
   const gain = Math.pow(2, ev)
   const wb: WbGains = adjustments.neutralGains ?? { r: 1, g: 1, b: 1 }
-  // Color temperature (Kelvin) → warm/cool channel gains. 5500K is neutral:
-  // lower Kelvin warms (more red, less blue), higher Kelvin cools.
-  const t = adjustments.temperature / 5500
-  const tempR = Math.pow(1 / t, 0.6)
-  const tempB = Math.pow(t, 0.6)
+  // RAW: color temperature (Kelvin) → warm/cool gains. 5500K neutral: lower warms,
+  // higher cools. JPEG: no Kelvin reference, so a relative offset around 0.
+  const tempR = raw
+    ? Math.pow(1 / (adjustments.temperature / 5500), 0.6)
+    : Math.pow(2, adjustments.wbOffset * 0.5)
+  const tempB = raw
+    ? Math.pow(adjustments.temperature / 5500, 0.6)
+    : Math.pow(2, -adjustments.wbOffset * 0.5)
   return { r: gain * wb.r * tempR, g: gain * wb.g, b: gain * wb.b * tempB }
 }
 
 function applyPixelTransform(data: Uint8ClampedArray, ev: number, adjustments: Adjustments): void {
-  const { r: gainR, g: gainG, b: gainB } = gainCoefficients(ev, adjustments)
+  const { r: gainR, g: gainG, b: gainB } = gainCoefficients(ev, adjustments, false)
   for (let i = 0; i < data.length; i += 4) {
     const r = SRGB_TO_LINEAR[data[i]!]!
     const g = SRGB_TO_LINEAR[data[i + 1]!]!
@@ -60,7 +63,7 @@ function applyLinearTransform(
   adjustments: Adjustments,
   out: Uint8ClampedArray,
 ): void {
-  const { r: gainR, g: gainG, b: gainB } = gainCoefficients(ev, adjustments)
+  const { r: gainR, g: gainG, b: gainB } = gainCoefficients(ev, adjustments, true)
   for (let i = 0; i < r.length; i++) {
     const o = i * 4
     out[o] = linearToSrgbByte(highlightRolloff(r[i]! * gainR))

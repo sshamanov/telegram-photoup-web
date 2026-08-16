@@ -45,6 +45,7 @@
   $: wbValue = photo.adjustments.neutralGains
     ? `×${photo.adjustments.neutralGains.r.toFixed(2)} / ×${photo.adjustments.neutralGains.g.toFixed(2)} / ×${photo.adjustments.neutralGains.b.toFixed(2)}`
     : '×1.00 / ×1.00 / ×1.00'
+  $: wbLabel = `${photo.adjustments.wbOffset > 0 ? '+' : ''}${photo.adjustments.wbOffset.toFixed(2)}`
 
   // The letterboxed rect of the image *content* within the square stage (CSS px).
   $: contentRect = (() => {
@@ -305,8 +306,8 @@
           <span class="ev">{evLabel}</span>
         </div>
 
+        <span class="section">White balance</span>
         {#if isRaw}
-          <span class="section">White balance</span>
           <Slider
             min={2500}
             max={10000}
@@ -317,11 +318,22 @@
             zeroLabel="5500"
             onChange={(v) => updateAdjustments(photo.id, { temperature: v })}
           />
-          <div class="row">
-            <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>Grey picker</button>
-            <span class="ev wb">{wbValue}</span>
-          </div>
+        {:else}
+          <Slider
+            min={-1}
+            max={1}
+            step={0.05}
+            value={photo.adjustments.wbOffset}
+            display={wbLabel}
+            zero={0}
+            zeroLabel="0"
+            onChange={(v) => updateAdjustments(photo.id, { wbOffset: v })}
+          />
         {/if}
+        <div class="row">
+          <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>Grey picker</button>
+          <span class="ev wb">{wbValue}</span>
+        </div>
 
         <span class="section">Crop</span>
         <div class="presets">

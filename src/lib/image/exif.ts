@@ -14,6 +14,19 @@ export interface ExifInfo {
   dateTaken?: string
 }
 
+/**
+ * Some makers embed their name in the EXIF Model tag (e.g. "NIKON D810") while
+ * RAW decoders already strip it ("D810"). Normalize so JPEG and RAW agree.
+ */
+export function cleanModel(model: string, make?: string): string {
+  if (!make) return model
+  const maker = make.trim().split(/\s+/)[0]
+  if (maker && model.trim().toLowerCase().startsWith(maker.toLowerCase())) {
+    return model.trim().slice(maker.length).trim()
+  }
+  return model.trim()
+}
+
 const TYPE_SIZE: Record<number, number> = {
   1: 1, // BYTE
   2: 1, // ASCII
@@ -89,6 +102,8 @@ function readIfd0(
   if (base + offset + 2 > bytes.length) return null
   const count = dv.getUint16(base + offset, le)
   let exifIfd: number | null = null
+  let rawMake = ''
+  let rawModel = ''
   for (let i = 0; i < count; i++) {
     const entry = base + offset + 2 + i * 12
     if (entry + 12 > bytes.length) break
@@ -97,10 +112,12 @@ function readIfd0(
     const cnt = dv.getUint32(entry + 4, le)
     const size = TYPE_SIZE[type] ?? 1
 
-    if (tag === 0x010f) exif.make = readAscii(bytes, valueAt(dv, entry + 8, type, cnt, size, base, le), Math.min(cnt, 64))
-    else if (tag === 0x0110) exif.model = readAscii(bytes, valueAt(dv, entry + 8, type, cnt, size, base, le), Math.min(cnt, 64))
+    if (tag === 0x010f) rawMake = readAscii(bytes, valueAt(dv, entry + 8, type, cnt, size, base, le), Math.min(cnt, 64))
+    else if (tag === 0x0110) rawModel = readAscii(bytes, valueAt(dv, entry + 8, type, cnt, size, base, le), Math.min(cnt, 64))
     else if (tag === 0x8769) exifIfd = dv.getUint32(entry + 8, le)
   }
+  if (rawMake) exif.make = rawMake
+  if (rawModel) exif.model = cleanModel(rawModel, rawMake)
   return exifIfd
 }
 

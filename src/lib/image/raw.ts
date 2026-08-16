@@ -1,5 +1,5 @@
 import LibRaw from 'libraw-wasm/dist/index.js'
-import type { ExifInfo } from './exif'
+import { cleanModel, type ExifInfo } from './exif'
 
 /** Camera-WB, sRGB-primaries, LINEAR (gamma-decoded) planar RGB at the decoded resolution. */
 export interface DecodedRaw {
@@ -70,7 +70,7 @@ export async function decodeRaw(buffer: ArrayBuffer): Promise<DecodedRaw> {
       if (meta) {
         exif = {
           make: meta.camera_make || undefined,
-          model: meta.camera_model || undefined,
+          model: meta.camera_model ? cleanModel(meta.camera_model, meta.camera_make) : undefined,
           lens: meta.lens?.Lens || undefined,
           focalLength: meta.focal_len || undefined,
           shutter: meta.shutter || undefined,

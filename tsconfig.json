@@ -11,5 +11,6 @@
     "allowJs": false,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "src/**/*.svelte", "src/**/*.d.ts", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.svelte", "src/**/*.d.ts", "tests/**/*.ts"],
+  "exclude": ["tests/real"]
 }

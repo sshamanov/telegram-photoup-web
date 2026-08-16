@@ -110,7 +110,7 @@
   function resetWb(): void {
     updateAdjustments(
       photo.id,
-      isRaw ? { temperature: 5500, hue: 0 } : { wbOffset: 0, hue: 0 },
+      isRaw ? { temperature: photo.cameraTemp ?? 5500, hue: 0 } : { wbOffset: 0, hue: 0 },
     )
   }
 
@@ -162,13 +162,44 @@
   }
 
   function resizeCrop(c: NormalizedCrop, handle: Handle, dx: number, dy: number, keepAspect: boolean): NormalizedCrop {
-    // Shift preserves the aspect ratio. Corners scale by the dominant axis; side
-    // handles use their single dragged axis (max would clamp negatives to 0).
+    const isSide = handle === 'n' || handle === 's' || handle === 'e' || handle === 'w'
+    const isHoriz = handle === 'e' || handle === 'w'
+    const isVert = handle === 'n' || handle === 's'
+
+    // Edge handles scale from the center so both opposite edges move equally.
+    if (isSide) {
+      if (keepAspect) {
+        const sx = (handle === 'e' ? dx : handle === 'w' ? -dx : 0) / c.width
+        const sy = (handle === 's' ? dy : handle === 'n' ? -dy : 0) / c.height
+        const s = 1 + sx + sy
+        const maxS = Math.min(
+          1 + (2 * c.x) / c.width,
+          1 + (2 * (1 - c.x - c.width)) / c.width,
+          1 + (2 * c.y) / c.height,
+          1 + (2 * (1 - c.y - c.height)) / c.height,
+        )
+        const scale = clamp(s, MIN_CROP / Math.min(c.width, c.height), Math.max(1, maxS))
+        const w = c.width * scale
+        const h = c.height * scale
+        return { x: c.x + (c.width - w) / 2, y: c.y + (c.height - h) / 2, width: w, height: h }
+      }
+      if (isHoriz) {
+        const maxW = Math.min(c.width + 2 * c.x, c.width + 2 * (1 - c.x - c.width))
+        const w = clamp(c.width + dx * 2, MIN_CROP, Math.max(MIN_CROP, maxW))
+        return { x: c.x + (c.width - w) / 2, y: c.y, width: w, height: c.height }
+      }
+      if (isVert) {
+        const maxH = Math.min(c.height + 2 * c.y, c.height + 2 * (1 - c.y - c.height))
+        const h = clamp(c.height + dy * 2, MIN_CROP, Math.max(MIN_CROP, maxH))
+        return { x: c.x, y: c.y + (c.height - h) / 2, width: c.width, height: h }
+      }
+    }
+
+    // Corners anchor the opposite corner.
     if (keepAspect) {
       const sx = (handle.includes('e') ? dx : handle.includes('w') ? -dx : 0) / c.width
       const sy = (handle.includes('s') ? dy : handle.includes('n') ? -dy : 0) / c.height
-      const isSide = handle === 'n' || handle === 's' || handle === 'e' || handle === 'w'
-      const s = 1 + (isSide ? sx + sy : Math.max(sx, sy))
+      const s = 1 + Math.max(sx, sy)
       const maxW = handle.includes('w') ? c.x + c.width : 1 - c.x
       const maxH = handle.includes('n') ? c.y + c.height : 1 - c.y
       const scale = Math.min(clamp(c.width * s, MIN_CROP, maxW) / c.width, clamp(c.height * s, MIN_CROP, maxH) / c.height)
@@ -266,7 +297,7 @@
       return
     }
     // Reflect the pick on the temperature + hue sliders (Lightroom-style).
-    const { temp, hue } = wbFromPick(r, g, b, isRaw)
+    const { temp, hue } = wbFromPick(r, g, b, isRaw, photo.cameraTemp ?? 5500)
     updateAdjustments(
       photo.id,
       isRaw ? { temperature: temp, hue } : { wbOffset: temp, hue },
@@ -342,8 +373,8 @@
             max={10000}
             step={50}
             value={photo.adjustments.temperature}
-            zero={5500}
-            zeroLabel="5500"
+            zero={photo.cameraTemp ?? 5500}
+            zeroLabel={String(Math.round(photo.cameraTemp ?? 5500))}
             onChange={(v) => updateAdjustments(photo.id, { temperature: v })}
           />
         {:else}

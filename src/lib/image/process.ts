@@ -66,15 +66,21 @@ function toneIndex(v: number): number {
   return clamp(v * 32767.5, 0, 65535) | 0
 }
 
-function gainCoefficients(ev: number, adjustments: Adjustments, raw: boolean): { r: number; g: number; b: number } {
+function gainCoefficients(
+  ev: number,
+  adjustments: Adjustments,
+  raw: boolean,
+  cameraTemp = 5500,
+): { r: number; g: number; b: number } {
   const gain = Math.pow(2, ev)
-  // RAW: color temperature (Kelvin) → warm/cool gains. 5500K neutral: lower warms,
-  // higher cools. JPEG: no Kelvin reference, so a relative offset around 0.
+  // RAW: the temperature is an absolute Kelvin target; the camera's as-shot WB is
+  // the neutral baseline (identity at that value). JPEG: a relative offset around 0.
+  const base = raw ? cameraTemp : 5500
   const tempR = raw
-    ? Math.pow(1 / (adjustments.temperature / 5500), 0.6)
+    ? Math.pow(base / adjustments.temperature, 0.6)
     : Math.pow(2, adjustments.wbOffset * 0.5)
   const tempB = raw
-    ? Math.pow(adjustments.temperature / 5500, 0.6)
+    ? Math.pow(adjustments.temperature / base, 0.6)
     : Math.pow(2, -adjustments.wbOffset * 0.5)
   // Hue: green↔magenta axis. +1 = magenta (more R/B, less G); -1 = green.
   const hueG = Math.pow(2, -adjustments.hue * 0.5)
@@ -83,15 +89,15 @@ function gainCoefficients(ev: number, adjustments: Adjustments, raw: boolean): {
 }
 
 /** Map a picked grey pixel onto the temperature + hue sliders (Lightroom-style). */
-export function wbFromPick(r: number, g: number, b: number, raw: boolean): { temp: number; hue: number } {
+export function wbFromPick(r: number, g: number, b: number, raw: boolean, cameraTemp = 5500): { temp: number; hue: number } {
   const gray = (r + g + b) / 3
   const hueG = gray / Math.max(g, 1)
   const hue = clamp(-2 * Math.log2(hueG) || 0, -1, 1)
   const hueRB = Math.pow(2, hue * 0.25)
   const tempR = gray / (Math.max(r, 1) * hueRB)
   if (raw) {
-    // tempR = (5500/temp)^0.6  →  temp = 5500 / tempR^(1/0.6)
-    return { temp: clamp(5500 / Math.pow(tempR, 1 / 0.6), 2500, 10000), hue }
+    // tempR = (base/temp)^0.6  →  temp = base / tempR^(1/0.6)
+    return { temp: clamp(cameraTemp / Math.pow(tempR, 1 / 0.6), 2500, 10000), hue }
   }
   // tempR = 2^(offset*0.5) → offset = 2*log2(tempR)
   return { temp: clamp(2 * Math.log2(tempR), -1, 1), hue }
@@ -116,8 +122,9 @@ function applyLinearTransform(
   ev: number,
   adjustments: Adjustments,
   out: Uint8ClampedArray,
+  cameraTemp = 5500,
 ): void {
-  const { r: gainR, g: gainG, b: gainB } = gainCoefficients(ev, adjustments, true)
+  const { r: gainR, g: gainG, b: gainB } = gainCoefficients(ev, adjustments, true, cameraTemp)
   for (let i = 0; i < r.length; i++) {
     const o = i * 4
     // Combined rolloff + sRGB + camera-Standard curve via LUT.
@@ -251,10 +258,12 @@ const PREVIEW_EDGE = 1024
 class LinearRgbBase implements DecodedBase {
   readonly width: number
   readonly height: number
+  readonly cameraTemp: number
 
   constructor(private readonly full: DecodedRaw, private readonly preview: DecodedRaw) {
     this.width = full.width
     this.height = full.height
+    this.cameraTemp = full.cameraTemp ?? 5500
   }
 
   async render(crop: NormalizedCrop | null, size: Size, adjustments: Adjustments): Promise<RenderedResult> {
@@ -273,7 +282,7 @@ class LinearRgbBase implements DecodedBase {
     const b = downscaleCrop(src.b, src.width, src.height, rect, size.width, size.height)
 
     const imageData = new ImageData(size.width, size.height)
-    applyLinearTransform(r, g, b, ev, adjustments, imageData.data)
+    applyLinearTransform(r, g, b, ev, adjustments, imageData.data, this.cameraTemp)
 
     const canvas = new OffscreenCanvas(size.width, size.height)
     const ctx = canvas.getContext('2d')!
@@ -316,14 +325,18 @@ function makePreview(full: DecodedRaw): DecodedRaw {
 export async function decodeBase(
   buffer: ArrayBuffer,
   sourceType: SourceType,
-): Promise<{ base: DecodedBase; exif: ExifInfo | null }> {
+): Promise<{ base: DecodedBase; exif: ExifInfo | null; cameraTemp: number | null }> {
   if (sourceType === 'raw') {
     const decoded = await decodeRaw(buffer)
-    return { base: new LinearRgbBase(decoded, makePreview(decoded)), exif: decoded.exif ?? null }
+    return {
+      base: new LinearRgbBase(decoded, makePreview(decoded)),
+      exif: decoded.exif ?? null,
+      cameraTemp: decoded.cameraTemp ?? null,
+    }
   }
 
   const bitmap = await createImageBitmap(new Blob([buffer]))
-  return { base: new CanvasBase(bitmap, bitmap.width, bitmap.height, true), exif: extractJpegExif(buffer) }
+  return { base: new CanvasBase(bitmap, bitmap.width, bitmap.height, true), exif: extractJpegExif(buffer), cameraTemp: null }
 }
 
 export async function renderThumb(

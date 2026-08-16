@@ -29,6 +29,7 @@ export interface Photo {
   fullWidth: number
   fullHeight: number
   exif: ExifInfo | null
+  cameraTemp: number | null
   autoEV: number | null
   histogram: Uint32Array | null
   error: string | null
@@ -66,8 +67,16 @@ export async function ensureBase(id: string): Promise<DecodedBase> {
   if (!item) throw new Error('Photo not found')
   debugLog('decode', { id, type: item.sourceType })
   const buffer = await item.file.arrayBuffer()
-  const { base, exif } = await decodeBase(buffer, item.sourceType)
+  const { base, exif, cameraTemp } = await decodeBase(buffer, item.sourceType)
   if (exif && !item.exif) patchPhoto(id, { exif })
+  if (cameraTemp && !item.cameraTemp) {
+    // First decode of a RAW: adopt the camera's as-shot WB temperature.
+    const patch: Partial<Photo> = { cameraTemp }
+    if (item.sourceType === 'raw' && item.adjustments.temperature === 5500) {
+      patch.adjustments = { ...item.adjustments, temperature: cameraTemp }
+    }
+    patchPhoto(id, patch)
+  }
   bases.set(id, base)
   return base
 }
@@ -164,6 +173,7 @@ export function addPhotos(files: File[]): void {
     fullWidth: 0,
     fullHeight: 0,
     exif: null,
+    cameraTemp: null,
     autoEV: null,
     histogram: null,
     error: null,
@@ -186,7 +196,18 @@ export function updateAdjustments(id: string, patch: Partial<Adjustments>): void
 
 export function resetAdjustments(id: string): void {
   photos.update((list) =>
-    list.map((p) => (p.id === id ? { ...p, adjustments: { ...neutralAdjustments } } : p)),
+    list.map((p) =>
+      p.id === id
+        ? {
+            ...p,
+            adjustments: {
+              ...neutralAdjustments,
+              // RAW resets to the camera's as-shot WB temperature.
+              temperature: p.cameraTemp ?? neutralAdjustments.temperature,
+            },
+          }
+        : p,
+    ),
   )
   enqueue(id)
 }

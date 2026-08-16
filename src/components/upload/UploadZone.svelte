@@ -1,6 +1,12 @@
 <script lang="ts">
   import { addPhotos } from '../../stores/photos'
 
+  const RAW_RE = /\.(nef|cr2|arw|dng|raf|orf)$/i
+
+  function isPhoto(file: File): boolean {
+    return file.type.startsWith('image/') || RAW_RE.test(file.name)
+  }
+
   function handleFiles(files: FileList | null): void {
     if (!files || files.length === 0) return
     addPhotos([...files])
@@ -10,7 +16,31 @@
     event.preventDefault()
     handleFiles(event.dataTransfer?.files ?? null)
   }
+
+  /** Ctrl+V / paste: ingest image files copied from the file manager (like Telegram Web). */
+  function onPaste(event: ClipboardEvent): void {
+    const dt = event.clipboardData
+    if (!dt) return
+    let files: File[] = []
+    if (dt.files.length > 0) {
+      // File-manager copies surface in `files`; `items` mirrors them, so prefer this.
+      files = [...dt.files].filter(isPhoto)
+    } else {
+      // In-browser image copies (e.g. an image on a page) surface via items only.
+      for (const item of dt.items) {
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          const f = item.getAsFile()
+          if (f) files.push(f)
+        }
+      }
+    }
+    if (files.length === 0) return
+    event.preventDefault()
+    addPhotos(files)
+  }
 </script>
+
+<svelte:window onpaste={onPaste} />
 
 <label
   class="zone"
@@ -25,7 +55,7 @@
     hidden
   />
   <strong>Upload photos</strong>
-  <span>Drop JPEG / PNG / NEF / CR2 here, or click to browse</span>
+  <span>Drop JPEG / PNG / NEF / CR2 here, or press Ctrl+V to paste</span>
 </label>
 
 <style>

@@ -29,6 +29,19 @@ function highlightRolloff(x: number): number {
   return knee + softness * (1 - Math.exp(-t))
 }
 
+/** Camera "Standard"-style tone curve: mid-tone contrast + slight shadow lift, applied in sRGB. */
+const CAMERA_CONTRAST = 1.4 // S-curve steepness around mid-gray (1 = identity)
+const CAMERA_SHADOW_LIFT = 0.04
+
+export function cameraCurveByte(v: number): number {
+  const x = clamp(v / 255, 0, 1)
+  // Smooth S-curve through (0,0), (0.5,0.5), (1,1): deepens mid-tones and compresses
+  // shadows/highlights (which protects highlights alongside the linear rolloff).
+  let y = Math.pow(x, CAMERA_CONTRAST) / (Math.pow(x, CAMERA_CONTRAST) + Math.pow(1 - x, CAMERA_CONTRAST))
+  y = y * (1 - CAMERA_SHADOW_LIFT) + CAMERA_SHADOW_LIFT
+  return Math.round(clamp(y, 0, 1) * 255)
+}
+
 function gainCoefficients(ev: number, adjustments: Adjustments, raw: boolean): { r: number; g: number; b: number } {
   const gain = Math.pow(2, ev)
   // RAW: color temperature (Kelvin) → warm/cool gains. 5500K neutral: lower warms,
@@ -83,9 +96,10 @@ function applyLinearTransform(
   const { r: gainR, g: gainG, b: gainB } = gainCoefficients(ev, adjustments, true)
   for (let i = 0; i < r.length; i++) {
     const o = i * 4
-    out[o] = linearToSrgbByte(highlightRolloff(r[i]! * gainR))
-    out[o + 1] = linearToSrgbByte(highlightRolloff(g[i]! * gainG))
-    out[o + 2] = linearToSrgbByte(highlightRolloff(b[i]! * gainB))
+    // Camera "Standard" tone curve (sRGB) so RAW preview and export are not flat.
+    out[o] = cameraCurveByte(linearToSrgbByte(highlightRolloff(r[i]! * gainR)))
+    out[o + 1] = cameraCurveByte(linearToSrgbByte(highlightRolloff(g[i]! * gainG)))
+    out[o + 2] = cameraCurveByte(linearToSrgbByte(highlightRolloff(b[i]! * gainB)))
     out[o + 3] = 255
   }
 }

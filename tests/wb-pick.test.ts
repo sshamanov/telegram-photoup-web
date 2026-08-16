@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { wbFromPick } from '../src/lib/image/process'
+import { wbFromPick, cameraCurveByte } from '../src/lib/image/process'
 
 describe('wbFromPick', () => {
   it('a neutral pixel maps to neutral sliders', () => {
@@ -28,5 +28,22 @@ describe('wbFromPick', () => {
     const jpeg = wbFromPick(255, 60, 40, false)
     expect(jpeg.temp).toBeGreaterThanOrEqual(-1)
     expect(jpeg.temp).toBeLessThanOrEqual(1)
+  })
+})
+
+describe('cameraCurveByte', () => {
+  it('adds mid-tone contrast (shadows deeper, highlights brighter)', () => {
+    expect(cameraCurveByte(60)).toBeLessThan(60) // shadows compressed down
+    expect(cameraCurveByte(200)).toBeGreaterThan(200) // highlights lifted up
+  })
+
+  it('preserves white and lifts blacks only slightly', () => {
+    expect(cameraCurveByte(255)).toBe(255)
+    expect(cameraCurveByte(0)).toBeLessThan(12) // ~3% shadow lift, not washed
+  })
+
+  it('keeps mid-gray near neutral', () => {
+    expect(cameraCurveByte(128)).toBeGreaterThan(124)
+    expect(cameraCurveByte(128)).toBeLessThan(136)
   })
 })

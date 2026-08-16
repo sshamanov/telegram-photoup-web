@@ -56,6 +56,7 @@ export async function decodeRaw(buffer: ArrayBuffer): Promise<DecodedRaw> {
     const fileCam = extractRawCamera(buffer)
     await raw.open(new Uint8Array(buffer), {
       useCameraWb: true,
+      useCameraMatrix: 1, // use the camera's color matrix when WB is set (richer color)
       outputColor: 1, // sRGB primaries + gamma
       outputBps: 16,
       noAutoBright: true,

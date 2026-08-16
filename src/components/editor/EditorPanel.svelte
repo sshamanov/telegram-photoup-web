@@ -3,6 +3,7 @@
   import { updateAdjustments } from '../../stores/photos'
   import { pushToast } from '../../stores/ui'
   import type { NormalizedCrop } from '../../lib/image/types'
+  import { wbFromPick } from '../../lib/image/process'
   import Slider from './Slider.svelte'
   import Histogram from './Histogram.svelte'
 
@@ -258,9 +259,12 @@
       pushToast('error', 'Pick a neutral area (not black or blown out)')
       return
     }
-    updateAdjustments(photo.id, {
-      neutralGains: { r: gray / Math.max(r, 1), g: gray / Math.max(g, 1), b: gray / Math.max(b, 1) },
-    })
+    // Reflect the pick on the temperature + hue sliders (Lightroom-style).
+    const { temp, hue } = wbFromPick(r, g, b, isRaw)
+    updateAdjustments(
+      photo.id,
+      isRaw ? { temperature: temp, hue } : { wbOffset: temp, hue },
+    )
     pickingNeutral = false
   }
 </script>

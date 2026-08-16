@@ -1,4 +1,4 @@
-import type { Adjustments, NormalizedCrop, Rect, Size, SourceType, WbGains } from './types'
+import type { Adjustments, NormalizedCrop, Rect, Size, SourceType } from './types'
 import { clamp, fitWithin, cropToPixels, autoExposureEV } from './math'
 import { decodeRaw, type DecodedRaw } from './raw'
 import { extractJpegExif, type ExifInfo } from './exif'
@@ -31,7 +31,6 @@ function highlightRolloff(x: number): number {
 
 function gainCoefficients(ev: number, adjustments: Adjustments, raw: boolean): { r: number; g: number; b: number } {
   const gain = Math.pow(2, ev)
-  const wb: WbGains = adjustments.neutralGains ?? { r: 1, g: 1, b: 1 }
   // RAW: color temperature (Kelvin) → warm/cool gains. 5500K neutral: lower warms,
   // higher cools. JPEG: no Kelvin reference, so a relative offset around 0.
   const tempR = raw
@@ -43,7 +42,22 @@ function gainCoefficients(ev: number, adjustments: Adjustments, raw: boolean): {
   // Hue: green↔magenta axis. +1 = magenta (more R/B, less G); -1 = green.
   const hueG = Math.pow(2, -adjustments.hue * 0.5)
   const hueRB = Math.pow(2, adjustments.hue * 0.25)
-  return { r: gain * wb.r * tempR * hueRB, g: gain * wb.g * hueG, b: gain * wb.b * tempB * hueRB }
+  return { r: gain * tempR * hueRB, g: gain * hueG, b: gain * tempB * hueRB }
+}
+
+/** Map a picked grey pixel onto the temperature + hue sliders (Lightroom-style). */
+export function wbFromPick(r: number, g: number, b: number, raw: boolean): { temp: number; hue: number } {
+  const gray = (r + g + b) / 3
+  const hueG = gray / Math.max(g, 1)
+  const hue = clamp(-2 * Math.log2(hueG) || 0, -1, 1)
+  const hueRB = Math.pow(2, hue * 0.25)
+  const tempR = gray / (Math.max(r, 1) * hueRB)
+  if (raw) {
+    // tempR = (5500/temp)^0.6  →  temp = 5500 / tempR^(1/0.6)
+    return { temp: clamp(5500 / Math.pow(tempR, 1 / 0.6), 2500, 10000), hue }
+  }
+  // tempR = 2^(offset*0.5) → offset = 2*log2(tempR)
+  return { temp: clamp(2 * Math.log2(tempR), -1, 1), hue }
 }
 
 function applyPixelTransform(data: Uint8ClampedArray, ev: number, adjustments: Adjustments): void {

@@ -31,13 +31,16 @@
     : photo.adjustments.exposureEV
 
   $: evLabel = `${shownEV >= 0 ? '+' : ''}${shownEV.toFixed(2)} EV`
-  $: exifCamera = photo.exif && (photo.exif.make || photo.exif.model)
-    ? `${photo.exif.make ?? ''} ${photo.exif.model ?? ''}`.trim()
-    : null
+  $: exifCamera = photo.exif?.model || null
+  $: exifLens = photo.exif?.lens
+    || (photo.exif?.focalLength ? `${Math.round(photo.exif.focalLength)}mm` : null)
   $: exifShutter = photo.exif?.shutter ? formatShutter(photo.exif.shutter) : null
   $: exifAperture = photo.exif?.aperture ? `f/${photo.exif.aperture.toFixed(1)}` : null
   $: exifIso = photo.exif?.iso ? `ISO ${photo.exif.iso}` : null
   $: exifDate = photo.exif?.dateTaken ? formatDate(photo.exif.dateTaken) : null
+  $: wbValue = photo.adjustments.neutralGains
+    ? `×${photo.adjustments.neutralGains.r.toFixed(2)} / ×${photo.adjustments.neutralGains.g.toFixed(2)} / ×${photo.adjustments.neutralGains.b.toFixed(2)}`
+    : null
 
   // The letterboxed rect of the image *content* within the square stage (CSS px).
   $: contentRect = (() => {
@@ -300,10 +303,15 @@
             step={50}
             value={photo.adjustments.temperature}
             display={`${Math.round(photo.adjustments.temperature)}K`}
+            zero={5500}
+            zeroLabel="5500"
             onChange={(v) => updateAdjustments(photo.id, { temperature: v })}
           />
           <div class="row">
-            <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>Neutral picker</button>
+            <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>Grey picker</button>
+            {#if wbValue}
+              <span class="ev">{wbValue}</span>
+            {/if}
           </div>
         {/if}
 
@@ -318,7 +326,7 @@
         <span class="section">Image</span>
         <div class="info">
           {#if exifCamera}<p class="line">{exifCamera}</p>{/if}
-          {#if photo.exif?.lens}<p class="line">{photo.exif.lens}</p>{/if}
+          {#if exifLens}<p class="line">{exifLens}</p>{/if}
           {#if exifShutter || exifAperture || exifIso}
             <p class="line">{[exifShutter, exifAperture, exifIso].filter(Boolean).join(' · ')}</p>
           {/if}

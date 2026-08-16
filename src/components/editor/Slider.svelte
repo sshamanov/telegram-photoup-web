@@ -6,6 +6,7 @@
   export let value: number
   export let display: string | null = null
   export let zero: number | null = null
+  export let zeroLabel = '0'
   export let onChange: (v: number) => void = () => {}
 
   $: pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))
@@ -28,7 +29,7 @@
       oninput={(e) => onChange(Number(e.currentTarget.value))}
     />
     {#if zeroPct !== null}
-      <span class="zero" style={`left:${zeroPct}%`}></span>
+      <span class="zero" data-label={zeroLabel} style={`left:${zeroPct}%`}></span>
     {/if}
   </span>
   {#if display !== null}
@@ -74,7 +75,7 @@
     pointer-events: none;
   }
   .zero::after {
-    content: '0';
+    content: attr(data-label);
     position: absolute;
     left: 50%;
     top: 100%;

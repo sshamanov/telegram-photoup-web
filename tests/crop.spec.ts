@@ -97,9 +97,14 @@ test('Shift+drag on a side handle keeps the crop aspect ratio', async ({ page })
 
   const after = (await page.locator('.crop-box').boundingBox())!
   // Without Shift the right edge alone would narrow just the width (aspect distorts);
-  // with Shift both dimensions shrink proportionally.
+  // with Shift both dimensions shrink proportionally AND the box stays centered
+  // (both left and right / top and bottom edges move equally).
   expect(after.width / after.height).toBeCloseTo(aspect, 1)
   expect(after.width).toBeLessThan(box.width)
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+  expect(Math.abs(after.x + after.width / 2 - cx)).toBeLessThan(2)
+  expect(Math.abs(after.y + after.height / 2 - cy)).toBeLessThan(2)
 })
 
 test('re-opening the editor shows the old crop for refinement', async ({ page }) => {

@@ -4,6 +4,13 @@
 
   export let photo: Photo
   export let onOpen: (id: string) => void = () => {}
+
+  // Effective exposure correction for the badge (auto → the computed autoEV).
+  $: ev = photo.adjustments.exposureMode === 'auto'
+    ? (photo.autoEV ?? photo.adjustments.exposureEV)
+    : photo.adjustments.exposureEV
+  $: evLabel = `${ev >= 0 ? '+' : ''}${ev.toFixed(1)}`
+  $: showEv = photo.status === 'ready' && Math.abs(ev) > 0.05
 </script>
 
 <div
@@ -22,6 +29,9 @@
       <div class="placeholder error-text">error</div>
     {:else}
       <div class="placeholder">developing…</div>
+    {/if}
+    {#if showEv}
+      <span class="ev-badge" title="Exposure correction">{evLabel}</span>
     {/if}
   </div>
 
@@ -117,6 +127,20 @@
     padding: 1px 5px;
   }
 
+  .ev-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--accent-2);
+    background: rgba(13, 11, 9, 0.78);
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
+    padding: 1px 6px;
+  }
   .tick {
     position: absolute;
     top: 8px;

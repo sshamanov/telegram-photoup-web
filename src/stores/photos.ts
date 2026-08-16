@@ -5,10 +5,11 @@ import { neutralAdjustments } from '../lib/image/types'
 import {
   decodeBase,
   renderThumb,
-  renderExport,
+  renderExportCanvas,
   exportDimensions,
   type DecodedBase,
 } from '../lib/image/process'
+import { encodeJpeg444InWorker } from '../lib/image/encode'
 import type { UploadPhoto } from '../types/telegram'
 import { pushToast } from './ui'
 import { debugLog } from '../lib/debug'
@@ -190,17 +191,28 @@ export function resetAdjustments(id: string): void {
   enqueue(id)
 }
 
-/** Render the final ≤2560px export for each id, in order. Decodes on demand. */
+/** Render the final ≤2560px export for each id. Decodes/transforms in order, then
+ * encodes all JPEGs in parallel across the worker pool (Q100 is the slow part). */
 export async function renderExports(ids: string[]): Promise<UploadPhoto[]> {
-  const payload: UploadPhoto[] = []
+  // Phase 1: decode + render each to an sRGB canvas.
+  const rendered: Array<{ canvas: OffscreenCanvas; fileName: string }> = []
   for (const id of ids) {
     const item = get(photos).find((p) => p.id === id)
     if (!item) continue
     const base = await ensureBase(id)
     debugLog('export', { id, crop: item.adjustments.crop, mode: item.adjustments.exposureMode })
-    const blob = await renderExport(base, item.adjustments)
-    payload.push({ file: blob, fileName: toJpgName(item.name) })
+    const canvas = await renderExportCanvas(base, item.adjustments)
+    rendered.push({ canvas, fileName: toJpgName(item.name) })
   }
+  // Phase 2: encode all in parallel.
+  const payload: UploadPhoto[] = await Promise.all(
+    rendered.map(async ({ canvas, fileName }) => {
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const file = await encodeJpeg444InWorker(imageData, { quality: 100, chroma: 1 })
+      return { file, fileName }
+    }),
+  )
   return payload
 }
 

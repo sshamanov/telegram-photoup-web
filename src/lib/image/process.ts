@@ -42,6 +42,30 @@ export function cameraCurveByte(v: number): number {
   return Math.round(clamp(y, 0, 1) * 255)
 }
 
+/**
+ * Precomputed linear→sRGB-byte LUT folding in the highlight rolloff (and, for RAW,
+ * the camera-Standard curve). Replaces Math.pow/exp per pixel — the hot path of a
+ * 2560px export. Index = linear value * 32767.5 covering linear [0, 2] (the rolloff
+ * saturates by 2); larger values clip to white.
+ */
+function buildToneLut(applyCameraCurve: boolean): Uint8Array {
+  const lut = new Uint8Array(65536)
+  for (let i = 0; i < 65536; i++) {
+    const x = (i / 65535) * 2
+    let b = linearToSrgbByte(highlightRolloff(x))
+    if (applyCameraCurve) b = cameraCurveByte(b)
+    lut[i] = b
+  }
+  return lut
+}
+
+const JPEG_TONE_LUT = buildToneLut(false)
+const RAW_TONE_LUT = buildToneLut(true)
+
+function toneIndex(v: number): number {
+  return clamp(v * 32767.5, 0, 65535) | 0
+}
+
 function gainCoefficients(ev: number, adjustments: Adjustments, raw: boolean): { r: number; g: number; b: number } {
   const gain = Math.pow(2, ev)
   // RAW: color temperature (Kelvin) → warm/cool gains. 5500K neutral: lower warms,
@@ -79,9 +103,9 @@ function applyPixelTransform(data: Uint8ClampedArray, ev: number, adjustments: A
     const r = SRGB_TO_LINEAR[data[i]!]!
     const g = SRGB_TO_LINEAR[data[i + 1]!]!
     const b = SRGB_TO_LINEAR[data[i + 2]!]!
-    data[i] = linearToSrgbByte(highlightRolloff(r * gainR))
-    data[i + 1] = linearToSrgbByte(highlightRolloff(g * gainG))
-    data[i + 2] = linearToSrgbByte(highlightRolloff(b * gainB))
+    data[i] = JPEG_TONE_LUT[toneIndex(r * gainR)]!
+    data[i + 1] = JPEG_TONE_LUT[toneIndex(g * gainG)]!
+    data[i + 2] = JPEG_TONE_LUT[toneIndex(b * gainB)]!
   }
 }
 
@@ -96,10 +120,10 @@ function applyLinearTransform(
   const { r: gainR, g: gainG, b: gainB } = gainCoefficients(ev, adjustments, true)
   for (let i = 0; i < r.length; i++) {
     const o = i * 4
-    // Camera "Standard" tone curve (sRGB) so RAW preview and export are not flat.
-    out[o] = cameraCurveByte(linearToSrgbByte(highlightRolloff(r[i]! * gainR)))
-    out[o + 1] = cameraCurveByte(linearToSrgbByte(highlightRolloff(g[i]! * gainG)))
-    out[o + 2] = cameraCurveByte(linearToSrgbByte(highlightRolloff(b[i]! * gainB)))
+    // Combined rolloff + sRGB + camera-Standard curve via LUT.
+    out[o] = RAW_TONE_LUT[toneIndex(r[i]! * gainR)]!
+    out[o + 1] = RAW_TONE_LUT[toneIndex(g[i]! * gainG)]!
+    out[o + 2] = RAW_TONE_LUT[toneIndex(b[i]! * gainB)]!
     out[o + 3] = 255
   }
 }
@@ -131,7 +155,7 @@ async function renderCanvas(
 ): Promise<OffscreenCanvas> {
   const canvas = new OffscreenCanvas(size.width, size.height)
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!
-  ctx.imageSmoothingQuality = 'high'
+  ctx.imageSmoothingQuality = 'medium'
   ctx.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, size.width, size.height)
   const imageData = ctx.getImageData(0, 0, size.width, size.height)
   applyPixelTransform(imageData.data, ev, adjustments)
@@ -315,13 +339,22 @@ export async function renderThumb(
   return { blob, autoEV, width: size.width, height: size.height, histogram }
 }
 
+/** Render the final ≤2560px sRGB canvas (no encode) for a photo. */
+export async function renderExportCanvas(
+  base: DecodedBase,
+  adjustments: Adjustments,
+  exportEdge = 2560,
+): Promise<OffscreenCanvas> {
+  const rect = cropRect(base.width, base.height, adjustments.crop)
+  const size = fitWithin(rect.width, rect.height, exportEdge)
+  const { canvas } = await base.render(adjustments.crop, size, adjustments)
+  return canvas
+}
+
 export async function renderExport(
   base: DecodedBase,
   adjustments: Adjustments,
   exportEdge = 2560,
 ): Promise<Blob> {
-  const rect = cropRect(base.width, base.height, adjustments.crop)
-  const size = fitWithin(rect.width, rect.height, exportEdge)
-  const { canvas } = await base.render(adjustments.crop, size, adjustments)
-  return encodeExport(canvas)
+  return encodeExport(await renderExportCanvas(base, adjustments, exportEdge))
 }

@@ -107,6 +107,13 @@
     updateAdjustments(photo.id, { exposureMode: 'manual', exposureEV: 0 })
   }
 
+  function resetWb(): void {
+    updateAdjustments(
+      photo.id,
+      isRaw ? { temperature: 5500, hue: 0 } : { wbOffset: 0, hue: 0 },
+    )
+  }
+
   function commitCrop(): void {
     if (!draftCrop) return
     const isFull =
@@ -361,7 +368,8 @@
           onChange={(v) => updateAdjustments(photo.id, { hue: v })}
         />
         <div class="row">
-          <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>Grey picker</button>
+          <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>Picker</button>
+          <button onclick={resetWb}>Reset</button>
           <span class="ev wb">{wbDisplay}</span>
         </div>
 

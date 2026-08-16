@@ -1,6 +1,7 @@
 import type { Adjustments, NormalizedCrop, Rect, Size, SourceType, WbGains } from './types'
 import { clamp, fitWithin, cropToPixels, autoExposureEV } from './math'
 import { decodeRaw, type DecodedRaw } from './raw'
+import { extractJpegExif, type ExifInfo } from './exif'
 import { downscalePlane, downscaleCrop } from './resize'
 import { encodeJpeg444InWorker } from './encode'
 
@@ -254,14 +255,17 @@ function makePreview(full: DecodedRaw): DecodedRaw {
   }
 }
 
-export async function decodeBase(buffer: ArrayBuffer, sourceType: SourceType): Promise<DecodedBase> {
+export async function decodeBase(
+  buffer: ArrayBuffer,
+  sourceType: SourceType,
+): Promise<{ base: DecodedBase; exif: ExifInfo | null }> {
   if (sourceType === 'raw') {
     const decoded = await decodeRaw(buffer)
-    return new LinearRgbBase(decoded, makePreview(decoded))
+    return { base: new LinearRgbBase(decoded, makePreview(decoded)), exif: decoded.exif ?? null }
   }
 
   const bitmap = await createImageBitmap(new Blob([buffer]))
-  return new CanvasBase(bitmap, bitmap.width, bitmap.height, true)
+  return { base: new CanvasBase(bitmap, bitmap.width, bitmap.height, true), exif: extractJpegExif(buffer) }
 }
 
 export async function renderThumb(

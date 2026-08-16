@@ -1,4 +1,5 @@
 import LibRaw from 'libraw-wasm/dist/index.js'
+import type { ExifInfo } from './exif'
 
 /** Camera-WB, sRGB-primaries, LINEAR (gamma-decoded) planar RGB at the decoded resolution. */
 export interface DecodedRaw {
@@ -7,6 +8,7 @@ export interface DecodedRaw {
   r: Float32Array
   g: Float32Array
   b: Float32Array
+  exif?: ExifInfo | null
 }
 
 // 16-bit sRGB -> linear. 8-bit values are scaled up by 257 to reuse the same LUT.
@@ -60,7 +62,27 @@ export async function decodeRaw(buffer: ArrayBuffer): Promise<DecodedRaw> {
     })
     const image = await raw.imageData()
     if (!image) throw new Error('RAW produced no image data')
-    return toLinearPlanar(image.data, image.width, image.height, image.bits)
+    const planar = toLinearPlanar(image.data, image.width, image.height, image.bits)
+
+    let exif: ExifInfo | null = null
+    try {
+      const meta = await raw.metadata(true)
+      if (meta) {
+        exif = {
+          make: meta.camera_make || undefined,
+          model: meta.camera_model || undefined,
+          lens: meta.lens?.Lens || undefined,
+          shutter: meta.shutter || undefined,
+          aperture: meta.aperture || undefined,
+          iso: meta.iso_speed || undefined,
+          dateTaken: meta.timestamp ? meta.timestamp.toISOString().slice(0, 16).replace('T', ' ') : undefined,
+        }
+      }
+    } catch {
+      exif = null
+    }
+
+    return { ...planar, exif }
   } finally {
     raw.dispose()
   }

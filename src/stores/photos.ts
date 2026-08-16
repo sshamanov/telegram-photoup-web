@@ -1,5 +1,6 @@
 import { writable, get } from 'svelte/store'
 import type { Adjustments, ProcessStatus, SourceType } from '../lib/image/types'
+import type { ExifInfo } from '../lib/image/exif'
 import { neutralAdjustments } from '../lib/image/types'
 import {
   decodeBase,
@@ -26,6 +27,7 @@ export interface Photo {
   height: number
   fullWidth: number
   fullHeight: number
+  exif: ExifInfo | null
   autoEV: number | null
   histogram: Uint32Array | null
   error: string | null
@@ -63,7 +65,8 @@ export async function ensureBase(id: string): Promise<DecodedBase> {
   if (!item) throw new Error('Photo not found')
   debugLog('decode', { id, type: item.sourceType })
   const buffer = await item.file.arrayBuffer()
-  const base = await decodeBase(buffer, item.sourceType)
+  const { base, exif } = await decodeBase(buffer, item.sourceType)
+  if (exif && !item.exif) patchPhoto(id, { exif })
   bases.set(id, base)
   return base
 }
@@ -159,6 +162,7 @@ export function addPhotos(files: File[]): void {
     height: 0,
     fullWidth: 0,
     fullHeight: 0,
+    exif: null,
     autoEV: null,
     histogram: null,
     error: null,

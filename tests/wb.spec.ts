@@ -20,18 +20,18 @@ test('JPEG editor has a white balance section with a relative slider and grey pi
   // White balance section present for JPEG (no Kelvin slider).
   await expect(page.getByRole('button', { name: 'Grey picker' })).toBeVisible()
 
-  // The grey-picker row shows the current correction (0.00 at neutral).
-  await expect(page.locator('.right .wb')).toHaveText('0.00')
+  // The grey-picker row shows the current correction and hue (0.00 · 0.00 at neutral).
+  await expect(page.locator('.right .wb')).toHaveText('0.00 · 0.00')
 
-  // Two sliders: exposure (0 mark) and white balance (0 mark).
+  // Three sliders: exposure (0), white-balance offset (0), hue (0).
   const marks = await page.evaluate(() =>
     [...document.querySelectorAll('.right .slider .zero')].map((z) => z.getAttribute('data-label')),
   )
-  expect(marks).toEqual(['0', '0'])
+  expect(marks).toEqual(['0', '0', '0'])
 
-  // Dragging the wb slider updates the indicator.
+  // Dragging the offset slider updates the indicator's first value.
   await page.locator('.right .slider').nth(1).locator('input').fill('1')
-  await expect(page.locator('.right .wb')).toHaveText('+1.00')
+  await expect(page.locator('.right .wb')).toHaveText('+1.00 · 0.00')
 
   // Warm the image: dragging the wb slider to +1 raises red over blue.
   await page.locator('.right .slider').nth(1).locator('input').fill('1')

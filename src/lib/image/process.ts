@@ -40,7 +40,10 @@ function gainCoefficients(ev: number, adjustments: Adjustments, raw: boolean): {
   const tempB = raw
     ? Math.pow(adjustments.temperature / 5500, 0.6)
     : Math.pow(2, -adjustments.wbOffset * 0.5)
-  return { r: gain * wb.r * tempR, g: gain * wb.g, b: gain * wb.b * tempB }
+  // Hue: green↔magenta axis. +1 = magenta (more R/B, less G); -1 = green.
+  const hueG = Math.pow(2, -adjustments.hue * 0.5)
+  const hueRB = Math.pow(2, adjustments.hue * 0.25)
+  return { r: gain * wb.r * tempR * hueRB, g: gain * wb.g * hueG, b: gain * wb.b * tempB * hueRB }
 }
 
 function applyPixelTransform(data: Uint8ClampedArray, ev: number, adjustments: Adjustments): void {

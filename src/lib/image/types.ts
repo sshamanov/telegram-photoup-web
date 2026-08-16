@@ -35,6 +35,8 @@ export interface Adjustments {
   temperature: number
   /** JPEG-only: relative warmth (-1..+1, 0 = no change). No Kelvin reference on JPEG. */
   wbOffset: number
+  /** Hue (green↔magenta) tint, -1..+1, 0 = neutral. Both sources. */
+  hue: number
   /** Neutral-picker channel gains (1 = neutral); null = camera WB (RAW) / none (JPEG). */
   neutralGains: WbGains | null
   crop: NormalizedCrop | null
@@ -46,6 +48,7 @@ export const neutralAdjustments: Adjustments = {
   exposureEV: 0,
   temperature: 5500,
   wbOffset: 0,
+  hue: 0,
   neutralGains: null,
   crop: null,
 }

@@ -42,10 +42,13 @@
   $: exifAperture = photo.exif?.aperture ? `f/${photo.exif.aperture.toFixed(1)}` : null
   $: exifIso = photo.exif?.iso ? `ISO ${photo.exif.iso}` : null
   $: exifDate = photo.exif?.dateTaken ? formatDate(photo.exif.dateTaken) : null
-  // Current temperature (RAW, Kelvin) or warmth correction (JPEG, signed offset).
-  $: wbDisplay = isRaw
+  // Current temperature (RAW, Kelvin) or warmth correction (JPEG, signed offset),
+  // plus the hue (green↔magenta) tint.
+  $: tempLabel = isRaw
     ? `${Math.round(photo.adjustments.temperature)}K`
     : `${photo.adjustments.wbOffset > 0 ? '+' : ''}${photo.adjustments.wbOffset.toFixed(2)}`
+  $: hueLabel = `${photo.adjustments.hue > 0 ? '+' : ''}${photo.adjustments.hue.toFixed(2)}`
+  $: wbDisplay = `${tempLabel} · ${hueLabel}`
 
   // The letterboxed rect of the image *content* within the square stage (CSS px).
   $: contentRect = (() => {
@@ -230,10 +233,26 @@
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     ctx.drawImage(img, 0, 0)
-    const px = ctx.getImageData(Math.floor(x * canvas.width), Math.floor(y * canvas.height), 1, 1).data
-    const r = px[0]!
-    const g = px[1]!
-    const b = px[2]!
+
+    // Average a 3×3 neighborhood so a single hot/dead pixel can't skew the WB.
+    const size = 3
+    const half = Math.floor(size / 2)
+    const sx = clamp(Math.floor(x * canvas.width) - half, 0, canvas.width - size)
+    const sy = clamp(Math.floor(y * canvas.height) - half, 0, canvas.height - size)
+    const px = ctx.getImageData(sx, sy, size, size).data
+    let sr = 0
+    let sg = 0
+    let sb = 0
+    let n = 0
+    for (let i = 0; i < px.length; i += 4) {
+      sr += px[i]!
+      sg += px[i + 1]!
+      sb += px[i + 2]!
+      n++
+    }
+    const r = sr / n
+    const g = sg / n
+    const b = sb / n
     const gray = (r + g + b) / 3
     if (gray < 8 || gray > 247) {
       pushToast('error', 'Pick a neutral area (not black or blown out)')
@@ -328,6 +347,15 @@
             onChange={(v) => updateAdjustments(photo.id, { wbOffset: v })}
           />
         {/if}
+        <Slider
+          min={-1}
+          max={1}
+          step={0.05}
+          value={photo.adjustments.hue}
+          zero={0}
+          zeroLabel="0"
+          onChange={(v) => updateAdjustments(photo.id, { hue: v })}
+        />
         <div class="row">
           <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>Grey picker</button>
           <span class="ev wb">{wbDisplay}</span>
@@ -444,6 +472,9 @@
   }
   .left.picking .crop-box {
     pointer-events: none;
+  }
+  .left.picking {
+    cursor: crosshair;
   }
   .h {
     position: absolute;

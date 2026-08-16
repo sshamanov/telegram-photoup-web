@@ -1,6 +1,6 @@
 <script lang="ts">
   import { authState, getCurrentAdapter, logout } from './stores/telegram'
-  import { photos, clearPhotos, renderExports, ensureBase, releaseBase } from './stores/photos'
+  import { photos, clearPhotos, removePhotos, renderExports, ensureBase, releaseBase } from './stores/photos'
   import { settings } from './stores/settings'
   import { pushToast } from './stores/ui'
   import AuthScreen from './components/auth/AuthScreen.svelte'
@@ -10,13 +10,20 @@
   import EditorPanel from './components/editor/EditorPanel.svelte'
   import UsageIndicator from './components/ui/UsageIndicator.svelte'
   import Toast from './components/ui/Toast.svelte'
-  import type { UploadPhoto } from './types/telegram'
+  import { debugLog } from './lib/debug'
+
+  // Telegram rejects a media group (album) with more than 10 photos.
+  const ALBUM_MAX = 10
 
   let editingId: string | null = null
   let sending = false
   let exporting = false
   let sendProgress = 0
   let loggingOut = false
+  let prepPhase: 'render' | 'encode' | null = null
+  let prepDone = 0
+  let prepTotal = 0
+  let prepName = ''
 
   $: selectedPhotos = $photos.filter((p) => p.selected && p.status === 'ready')
   $: editingPhoto = $photos.find((p) => p.id === editingId) ?? null
@@ -76,20 +83,36 @@
     sending = true
     exporting = true
     sendProgress = 0
+    const sentIds: string[] = []
     try {
-      const payload: UploadPhoto[] = await renderExports(ids)
-      exporting = false
-      await getCurrentAdapter().sendPhotos(groupId, payload, (progress) => {
-        sendProgress = progress
+      // Prepare all exports (with per-photo progress), then send in albums of ≤10
+      // so a large batch doesn't hit Telegram's MULTI_MEDIA_TOO_LONG limit.
+      const payload = await renderExports(ids, (phase, done, total, name) => {
+        prepPhase = phase
+        prepDone = done
+        prepTotal = total
+        prepName = name
       })
-      pushToast('info', `Sent ${payload.length} photo(s)`)
-      clearPhotos()
+      exporting = false
+      for (let i = 0; i < payload.length; i += ALBUM_MAX) {
+        const chunk = payload.slice(i, i + ALBUM_MAX)
+        const chunkIds = ids.slice(i, i + ALBUM_MAX)
+        debugLog('send:album', { at: i, count: chunk.length, total: payload.length })
+        await getCurrentAdapter().sendPhotos(groupId, chunk, (cp) => {
+          sendProgress = (i + cp * chunk.length) / payload.length
+        })
+        sentIds.push(...chunkIds)
+      }
+      pushToast('info', `Sent ${sentIds.length} photo(s)`)
     } catch (error) {
       pushToast('error', error instanceof Error ? error.message : String(error))
     } finally {
       sending = false
       exporting = false
+      prepPhase = null
     }
+    // Remove only the photos that were actually sent; keep the rest with their edits.
+    if (sentIds.length > 0) removePhotos(sentIds)
   }
 </script>
 
@@ -120,7 +143,10 @@
     <footer>
       <button onclick={send} disabled={sending || selectedPhotos.length === 0}>
         {#if exporting}
-          <span>Preparing…</span>
+          <span>{prepPhase === 'encode' ? 'Encoding' : 'Preparing'} {prepDone}/{prepTotal}</span>
+          {#if prepName}
+            <span class="prep-name" title={prepName}>{prepName}</span>
+          {/if}
         {:else if sending}
           <span class="bar"><span class="fill" style="width:{Math.round(sendProgress * 100)}%"></span></span>
           <span>Sending {Math.round(sendProgress * 100)}%</span>
@@ -221,6 +247,14 @@
   footer button:not(:disabled) {
     border-color: var(--accent);
     background: linear-gradient(180deg, rgba(255, 122, 69, 0.18), rgba(255, 122, 69, 0.06));
+  }
+  .prep-name {
+    color: var(--muted);
+    font-size: 11px;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .bar {
     width: 140px;

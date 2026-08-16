@@ -192,10 +192,16 @@ export function resetAdjustments(id: string): void {
 }
 
 /** Render the final ≤2560px export for each id. Decodes/transforms in order, then
- * encodes all JPEGs in parallel across the worker pool (Q100 is the slow part). */
-export async function renderExports(ids: string[]): Promise<UploadPhoto[]> {
-  // Phase 1: decode + render each to an sRGB canvas.
+ * encodes all JPEGs in parallel across the worker pool (Q100 is the slow part).
+ * `onProgress(phase, done, total, name)` reports each photo as it renders/encodes. */
+export async function renderExports(
+  ids: string[],
+  onProgress?: (phase: 'render' | 'encode', done: number, total: number, name: string) => void,
+): Promise<UploadPhoto[]> {
+  const total = ids.length
+  // Phase 1: decode + render each to an sRGB canvas (sequential, main thread).
   const rendered: Array<{ canvas: OffscreenCanvas; fileName: string }> = []
+  let done = 0
   for (const id of ids) {
     const item = get(photos).find((p) => p.id === id)
     if (!item) continue
@@ -203,17 +209,38 @@ export async function renderExports(ids: string[]): Promise<UploadPhoto[]> {
     debugLog('export', { id, crop: item.adjustments.crop, mode: item.adjustments.exposureMode })
     const canvas = await renderExportCanvas(base, item.adjustments)
     rendered.push({ canvas, fileName: toJpgName(item.name) })
+    done++
+    onProgress?.('render', done, total, item.name)
   }
   // Phase 2: encode all in parallel.
+  let encoded = 0
   const payload: UploadPhoto[] = await Promise.all(
     rendered.map(async ({ canvas, fileName }) => {
       const ctx = canvas.getContext('2d', { willReadFrequently: true })!
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
       const file = await encodeJpeg444InWorker(imageData, { quality: 100, chroma: 1 })
+      encoded++
+      onProgress?.('encode', encoded, total, fileName)
       return { file, fileName }
     }),
   )
   return payload
+}
+
+/** Remove only the given photos (e.g. the ones actually sent), keeping the rest
+ * with their edits intact. */
+export function removePhotos(ids: string[]): void {
+  const toRemove = new Set(ids)
+  for (const id of toRemove) releaseBase(id)
+  photos.update((list) => {
+    for (const p of list) {
+      if (toRemove.has(p.id)) {
+        if (p.thumbUrl) URL.revokeObjectURL(p.thumbUrl)
+        if (p.fullThumbUrl) URL.revokeObjectURL(p.fullThumbUrl)
+      }
+    }
+    return list.filter((p) => !toRemove.has(p.id))
+  })
 }
 
 export function clearPhotos(): void {

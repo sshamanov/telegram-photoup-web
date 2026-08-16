@@ -329,7 +329,7 @@ export async function decodeBase(
 export async function renderThumb(
   base: DecodedBase,
   adjustments: Adjustments,
-  thumbEdge = 512,
+  thumbEdge = 1024,
 ): Promise<{ blob: Blob; autoEV: number; width: number; height: number; histogram: Uint32Array }> {
   const rect = cropRect(base.width, base.height, adjustments.crop)
   const size = fitWithin(rect.width, rect.height, thumbEdge)

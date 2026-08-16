@@ -44,7 +44,7 @@
   $: exifDate = photo.exif?.dateTaken ? formatDate(photo.exif.dateTaken) : null
   $: wbValue = photo.adjustments.neutralGains
     ? `×${photo.adjustments.neutralGains.r.toFixed(2)} / ×${photo.adjustments.neutralGains.g.toFixed(2)} / ×${photo.adjustments.neutralGains.b.toFixed(2)}`
-    : null
+    : '×1.00 / ×1.00 / ×1.00'
 
   // The letterboxed rect of the image *content* within the square stage (CSS px).
   $: contentRect = (() => {
@@ -308,7 +308,6 @@
         {#if isRaw}
           <span class="section">White balance</span>
           <Slider
-            label="Temperature"
             min={2500}
             max={10000}
             step={50}
@@ -320,9 +319,7 @@
           />
           <div class="row">
             <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>Grey picker</button>
-            {#if wbValue}
-              <span class="ev">{wbValue}</span>
-            {/if}
+            <span class="ev wb">{wbValue}</span>
           </div>
         {/if}
 
@@ -485,6 +482,9 @@
     font-variant-numeric: tabular-nums;
     font-size: 12px;
     white-space: nowrap;
+  }
+  .wb {
+    color: var(--muted);
   }
   .presets {
     display: flex;

@@ -11,10 +11,11 @@
 
   $: pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))
   $: zeroPct = zero === null ? null : Math.min(100, Math.max(0, ((zero - min) / (max - min)) * 100))
-  $: bare = label === null && display === null
+  // Grid columns shrink when the label and/or value span is absent.
+  $: cols = label !== null ? (display !== null ? '96px 1fr 96px' : '96px 1fr') : display !== null ? '1fr 96px' : '1fr'
 </script>
 
-<label class="slider" class:bare>
+<label class="slider" style={`grid-template-columns:${cols}`}>
   {#if label !== null}
     <span class="label">{label}</span>
   {/if}
@@ -40,13 +41,8 @@
 <style>
   .slider {
     display: grid;
-    grid-template-columns: 96px 1fr 96px;
     align-items: center;
     gap: 16px;
-  }
-  .slider.bare {
-    grid-template-columns: 1fr;
-    gap: 0;
   }
   .label {
     color: var(--muted);

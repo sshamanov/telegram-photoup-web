@@ -3,6 +3,8 @@ export interface ExifInfo {
   make?: string
   model?: string
   lens?: string
+  /** Focal length in mm. */
+  focalLength?: number
   /** Exposure time in seconds (e.g. 1/125 → 0.008). */
   shutter?: number
   /** Aperture f-number (e.g. 2.8). */
@@ -124,6 +126,7 @@ function readExifIfd(
     else if (tag === 0x829d) exif.aperture = readRational(dv, valueAt(dv, entry + 8, type, cnt, size, base, le), le)
     else if (tag === 0x8827) exif.iso = dv.getUint16(valueAt(dv, entry + 8, type, cnt, size, base, le), le)
     else if (tag === 0x9003) exif.dateTaken = readAscii(bytes, valueAt(dv, entry + 8, type, cnt, size, base, le), Math.min(cnt, 32))
+    else if (tag === 0x920a) exif.focalLength = readRational(dv, valueAt(dv, entry + 8, type, cnt, size, base, le), le)
     else if (tag === 0xa434) exif.lens = readAscii(bytes, valueAt(dv, entry + 8, type, cnt, size, base, le), Math.min(cnt, 64))
   }
 }

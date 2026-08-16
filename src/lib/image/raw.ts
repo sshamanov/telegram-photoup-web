@@ -72,6 +72,7 @@ export async function decodeRaw(buffer: ArrayBuffer): Promise<DecodedRaw> {
           make: meta.camera_make || undefined,
           model: meta.camera_model || undefined,
           lens: meta.lens?.Lens || undefined,
+          focalLength: meta.focal_len || undefined,
           shutter: meta.shutter || undefined,
           aperture: meta.aperture || undefined,
           iso: meta.iso_speed || undefined,

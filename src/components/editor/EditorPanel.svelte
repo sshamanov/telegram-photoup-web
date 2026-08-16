@@ -42,10 +42,10 @@
   $: exifAperture = photo.exif?.aperture ? `f/${photo.exif.aperture.toFixed(1)}` : null
   $: exifIso = photo.exif?.iso ? `ISO ${photo.exif.iso}` : null
   $: exifDate = photo.exif?.dateTaken ? formatDate(photo.exif.dateTaken) : null
-  $: wbValue = photo.adjustments.neutralGains
-    ? `×${photo.adjustments.neutralGains.r.toFixed(2)} / ×${photo.adjustments.neutralGains.g.toFixed(2)} / ×${photo.adjustments.neutralGains.b.toFixed(2)}`
-    : '×1.00 / ×1.00 / ×1.00'
-  $: wbLabel = `${photo.adjustments.wbOffset > 0 ? '+' : ''}${photo.adjustments.wbOffset.toFixed(2)}`
+  // Current temperature (RAW, Kelvin) or warmth correction (JPEG, signed offset).
+  $: wbDisplay = isRaw
+    ? `${Math.round(photo.adjustments.temperature)}K`
+    : `${photo.adjustments.wbOffset > 0 ? '+' : ''}${photo.adjustments.wbOffset.toFixed(2)}`
 
   // The letterboxed rect of the image *content* within the square stage (CSS px).
   $: contentRect = (() => {
@@ -313,7 +313,6 @@
             max={10000}
             step={50}
             value={photo.adjustments.temperature}
-            display={`${Math.round(photo.adjustments.temperature)}K`}
             zero={5500}
             zeroLabel="5500"
             onChange={(v) => updateAdjustments(photo.id, { temperature: v })}
@@ -324,7 +323,6 @@
             max={1}
             step={0.05}
             value={photo.adjustments.wbOffset}
-            display={wbLabel}
             zero={0}
             zeroLabel="0"
             onChange={(v) => updateAdjustments(photo.id, { wbOffset: v })}
@@ -332,7 +330,7 @@
         {/if}
         <div class="row">
           <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>Grey picker</button>
-          <span class="ev wb">{wbValue}</span>
+          <span class="ev wb">{wbDisplay}</span>
         </div>
 
         <span class="section">Crop</span>

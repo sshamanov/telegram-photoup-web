@@ -66,8 +66,9 @@ File (JPG/PNG/NEF/CR2)
 
 ## Processing concept
 
-- **RAW:** decode to 16-bit linear RGB (camera WB) → [temp / neutral picker] →
-  global auto exposure → mild highlight rolloff → crop → resize ≤2560px → sRGB JPEG.
+- **RAW:** decode to 16-bit linear RGB (camera WB + camera color matrix) →
+  [temp / hue / grey picker] → global auto exposure → mild highlight rolloff →
+  camera-"Standard" tone curve → crop → resize ≤2560px → sRGB JPEG.
 - **JPEG:** decode → global auto exposure → mild highlight rolloff → crop →
   resize ≤2560px → JPEG.
 

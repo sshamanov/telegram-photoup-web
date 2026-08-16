@@ -200,11 +200,13 @@ export async function renderExports(
 ): Promise<UploadPhoto[]> {
   const total = ids.length
   // Phase 1: decode + render each to an sRGB canvas (sequential, main thread).
+  // Report the current photo before decoding so the name/count stay current.
   const rendered: Array<{ canvas: OffscreenCanvas; fileName: string }> = []
   let done = 0
   for (const id of ids) {
     const item = get(photos).find((p) => p.id === id)
     if (!item) continue
+    onProgress?.('render', done, total, item.name)
     const base = await ensureBase(id)
     debugLog('export', { id, crop: item.adjustments.crop, mode: item.adjustments.exposureMode })
     const canvas = await renderExportCanvas(base, item.adjustments)
@@ -212,19 +214,29 @@ export async function renderExports(
     done++
     onProgress?.('render', done, total, item.name)
   }
-  // Phase 2: encode all in parallel.
+
+  // Phase 2: encode in a bounded pool. Each worker yields before reading pixels so
+  // the UI can paint the "Encoding i/N" progress instead of blocking on 24 copies.
+  onProgress?.('encode', 0, total, '')
+  const results = new Array<UploadPhoto | null>(rendered.length)
+  let next = 0
   let encoded = 0
-  const payload: UploadPhoto[] = await Promise.all(
-    rendered.map(async ({ canvas, fileName }) => {
+  async function encodeWorker(): Promise<void> {
+    while (next < rendered.length) {
+      const idx = next++
+      const { canvas, fileName } = rendered[idx]!
+      await new Promise((r) => setTimeout(r, 0))
       const ctx = canvas.getContext('2d', { willReadFrequently: true })!
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
       const file = await encodeJpeg444InWorker(imageData, { quality: 100, chroma: 1 })
       encoded++
       onProgress?.('encode', encoded, total, fileName)
-      return { file, fileName }
-    }),
-  )
-  return payload
+      results[idx] = { file, fileName }
+    }
+  }
+  const pool = Math.min(4, rendered.length)
+  await Promise.all(Array.from({ length: pool }, () => encodeWorker()))
+  return results.filter((r): r is UploadPhoto => r !== null)
 }
 
 /** Remove only the given photos (e.g. the ones actually sent), keeping the rest

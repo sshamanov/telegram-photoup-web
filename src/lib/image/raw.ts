@@ -1,5 +1,5 @@
 import LibRaw from 'libraw-wasm/dist/index.js'
-import { cleanModel, type ExifInfo } from './exif'
+import { extractRawCamera, formatCamera, type ExifInfo } from './exif'
 
 /** Camera-WB, sRGB-primaries, LINEAR (gamma-decoded) planar RGB at the decoded resolution. */
 export interface DecodedRaw {
@@ -52,6 +52,8 @@ function toLinearPlanar(data: Uint8Array | Uint16Array, width: number, height: n
 export async function decodeRaw(buffer: ArrayBuffer): Promise<DecodedRaw> {
   const raw = new LibRaw()
   try {
+    // Parse the file's own EXIF Make/Model BEFORE libraw open() detaches the buffer.
+    const fileCam = extractRawCamera(buffer)
     await raw.open(new Uint8Array(buffer), {
       useCameraWb: true,
       outputColor: 1, // sRGB primaries + gamma
@@ -67,10 +69,13 @@ export async function decodeRaw(buffer: ArrayBuffer): Promise<DecodedRaw> {
     let exif: ExifInfo | null = null
     try {
       const meta = await raw.metadata(true)
+      const make = fileCam.make || meta?.camera_make || undefined
+      const model = fileCam.model || meta?.camera_model || undefined
       if (meta) {
         exif = {
-          make: meta.camera_make || undefined,
-          model: meta.camera_model ? cleanModel(meta.camera_model, meta.camera_make) : undefined,
+          make,
+          model,
+          camera: formatCamera(make, model),
           lens: meta.lens?.Lens || undefined,
           focalLength: meta.focal_len || undefined,
           shutter: meta.shutter || undefined,

@@ -2,6 +2,8 @@
 export interface ExifInfo {
   make?: string
   model?: string
+  /** Display string, e.g. "NIKON D810" (maker + model). */
+  camera?: string | null
   lens?: string
   /** Focal length in mm. */
   focalLength?: number
@@ -15,16 +17,16 @@ export interface ExifInfo {
 }
 
 /**
- * Some makers embed their name in the EXIF Model tag (e.g. "NIKON D810") while
- * RAW decoders already strip it ("D810"). Normalize so JPEG and RAW agree.
+ * Full display name: "NIKON D810". JPEG EXIF Model already carries the maker
+ * ("NIKON D810"); RAW decoders strip it ("D810"), so prepend the maker brand.
  */
-export function cleanModel(model: string, make?: string): string {
-  if (!make) return model
-  const maker = make.trim().split(/\s+/)[0]
-  if (maker && model.trim().toLowerCase().startsWith(maker.toLowerCase())) {
-    return model.trim().slice(maker.length).trim()
-  }
-  return model.trim()
+export function formatCamera(make: string | undefined, model: string | undefined): string | null {
+  if (!model) return null
+  const m = model.trim()
+  if (!make) return m
+  const brand = make.trim().split(/\s+/)[0]
+  if (brand && m.toLowerCase().startsWith(brand.toLowerCase())) return m
+  return `${brand} ${m}`
 }
 
 const TYPE_SIZE: Record<number, number> = {
@@ -78,6 +80,37 @@ export function extractJpegExif(buffer: ArrayBuffer): ExifInfo | null {
   return null
 }
 
+/**
+ * RAW files (NEF/CR2) start with a plain TIFF header; read the root IFD0
+ * Make/Model directly so they exactly match the sibling JPEG's EXIF values
+ * (libraw normalizes them away, e.g. "NIKON" → "Nikon", "NIKON D810" → "D810").
+ */
+export function extractRawCamera(buffer: ArrayBuffer): { make?: string; model?: string } {
+  const bytes = new Uint8Array(buffer)
+  if (bytes.length < 8) return {}
+  const le = bytes[0] === 0x49 && bytes[1] === 0x49
+  const be = bytes[0] === 0x4d && bytes[1] === 0x4d
+  if (!le && !be) return {}
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  if (dv.getUint16(2, le) !== 0x002a) return {}
+  const ifd0 = dv.getUint32(4, le)
+  if (ifd0 === 0 || ifd0 + 2 > bytes.length) return {}
+  const count = dv.getUint16(ifd0, le)
+  let make = ''
+  let model = ''
+  for (let i = 0; i < count; i++) {
+    const e = ifd0 + 2 + i * 12
+    if (e + 12 > bytes.length) break
+    const tag = dv.getUint16(e, le)
+    const type = dv.getUint16(e + 2, le)
+    const cnt = dv.getUint32(e + 4, le)
+    const size = TYPE_SIZE[type] ?? 1
+    if (tag === 0x010f) make = readAscii(bytes, valueAt(dv, e + 8, type, cnt, size, 0, le), Math.min(cnt, 64))
+    else if (tag === 0x0110) model = readAscii(bytes, valueAt(dv, e + 8, type, cnt, size, 0, le), Math.min(cnt, 64))
+  }
+  return { make, model }
+}
+
 function parseTiff(bytes: Uint8Array, tiffStart: number): ExifInfo | null {
   if (tiffStart + 8 > bytes.length) return null
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -117,7 +150,8 @@ function readIfd0(
     else if (tag === 0x8769) exifIfd = dv.getUint32(entry + 8, le)
   }
   if (rawMake) exif.make = rawMake
-  if (rawModel) exif.model = cleanModel(rawModel, rawMake)
+  if (rawModel) exif.model = rawModel
+  exif.camera = formatCamera(rawMake, rawModel)
   return exifIfd
 }
 

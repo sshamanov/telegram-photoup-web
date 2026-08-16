@@ -31,7 +31,7 @@
     : photo.adjustments.exposureEV
 
   $: evLabel = `${shownEV >= 0 ? '+' : ''}${shownEV.toFixed(2)} EV`
-  $: exifCamera = photo.exif?.model || null
+  $: exifCamera = photo.exif?.camera ?? photo.exif?.model ?? null
   $: exifLens = photo.exif?.lens
     || (photo.exif?.focalLength ? `${Math.round(photo.exif.focalLength)}mm` : null)
   $: exifShutter = photo.exif?.shutter ? formatShutter(photo.exif.shutter) : null

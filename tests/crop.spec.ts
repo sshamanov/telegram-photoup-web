@@ -79,6 +79,29 @@ test('Shift+drag keeps the crop aspect ratio', async ({ page }) => {
   expect(after.width / after.height).toBeCloseTo(aspect, 1)
 })
 
+test('Shift+drag on a side handle keeps the crop aspect ratio', async ({ page }) => {
+  await login(page)
+  await openEditor(page)
+
+  const box = (await page.locator('.crop-box').boundingBox())!
+  const aspect = box.width / box.height // 2:1 for the 200x100 fixture
+
+  // Drag the right-edge handle (e) inward with Shift held.
+  const hb = (await page.locator('.h-e').boundingBox())!
+  await page.keyboard.down('Shift')
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(hb.x + hb.width / 2 - box.width * 0.2, hb.y + hb.height / 2, { steps: 6 })
+  await page.mouse.up()
+  await page.keyboard.up('Shift')
+
+  const after = (await page.locator('.crop-box').boundingBox())!
+  // Without Shift the right edge alone would narrow just the width (aspect distorts);
+  // with Shift both dimensions shrink proportionally.
+  expect(after.width / after.height).toBeCloseTo(aspect, 1)
+  expect(after.width).toBeLessThan(box.width)
+})
+
 test('re-opening the editor shows the old crop for refinement', async ({ page }) => {
   await login(page)
   await openEditor(page)

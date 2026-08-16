@@ -161,15 +161,14 @@
     drag = { kind: 'resize', handle, startX: event.clientX, startY: event.clientY, startCrop: { ...draftCrop } }
   }
 
-  function isCorner(handle: Handle): boolean {
-    return handle === 'nw' || handle === 'ne' || handle === 'sw' || handle === 'se'
-  }
-
   function resizeCrop(c: NormalizedCrop, handle: Handle, dx: number, dy: number, keepAspect: boolean): NormalizedCrop {
-    if (keepAspect && isCorner(handle)) {
+    // Shift preserves the aspect ratio. Corners scale by the dominant axis; side
+    // handles use their single dragged axis (max would clamp negatives to 0).
+    if (keepAspect) {
       const sx = (handle.includes('e') ? dx : handle.includes('w') ? -dx : 0) / c.width
       const sy = (handle.includes('s') ? dy : handle.includes('n') ? -dy : 0) / c.height
-      const s = 1 + Math.max(sx, sy)
+      const isSide = handle === 'n' || handle === 's' || handle === 'e' || handle === 'w'
+      const s = 1 + (isSide ? sx + sy : Math.max(sx, sy))
       const maxW = handle.includes('w') ? c.x + c.width : 1 - c.x
       const maxH = handle.includes('n') ? c.y + c.height : 1 - c.y
       const scale = Math.min(clamp(c.width * s, MIN_CROP, maxW) / c.width, clamp(c.height * s, MIN_CROP, maxH) / c.height)

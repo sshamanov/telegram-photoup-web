@@ -33,8 +33,7 @@ test('JPEG editor has a white balance section with a relative slider and grey pi
   await page.locator('.right .slider').nth(1).locator('input').fill('1')
   await expect(page.locator('.right .wb')).toHaveText('+1.00 · 0.00')
 
-  // Warm the image: dragging the wb slider to +1 raises red over blue.
-  await page.locator('.right .slider').nth(1).locator('input').fill('1')
+  // And warms the image: red over blue rises.
   await page.waitForTimeout(500)
   const ratio = await page.evaluate(() => {
     const img = document.querySelector('.stage img') as HTMLImageElement
@@ -47,4 +46,23 @@ test('JPEG editor has a white balance section with a relative slider and grey pi
     return (d[0] ?? 0) / (d[2] ?? 1)
   })
   expect(ratio).toBeGreaterThan(2)
+})
+
+test('grey picker drives the sliders', async ({ page }) => {
+  await login(page)
+
+  await page.setInputFiles('input[type=file]', 'tests/fixtures/warm.png')
+  await expect(page.getByAltText('warm.png')).toBeVisible({ timeout: 10_000 })
+  await page.getByAltText('warm.png').click()
+  await expect(page.locator('.h-se')).toBeVisible()
+
+  // Baseline: neutral.
+  await expect(page.locator('.right .wb')).toHaveText('0.00 · 0.00')
+
+  // Pick the warm center — the sliders must move off neutral.
+  await page.getByRole('button', { name: 'Grey picker' }).click()
+  const stage = await page.locator('.stage').boundingBox()
+  await page.mouse.click(stage!.x + stage!.width / 2, stage!.y + stage!.height / 2)
+
+  await expect(page.locator('.right .wb')).not.toHaveText('0.00 · 0.00')
 })

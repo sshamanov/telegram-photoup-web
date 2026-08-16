@@ -30,6 +30,15 @@
     ? (photo.autoEV ?? photo.adjustments.exposureEV)
     : photo.adjustments.exposureEV
 
+  $: evLabel = `${shownEV >= 0 ? '+' : ''}${shownEV.toFixed(2)} EV`
+  $: exifCamera = photo.exif && (photo.exif.make || photo.exif.model)
+    ? `${photo.exif.make ?? ''} ${photo.exif.model ?? ''}`.trim()
+    : null
+  $: exifShutter = photo.exif?.shutter ? formatShutter(photo.exif.shutter) : null
+  $: exifAperture = photo.exif?.aperture ? `f/${photo.exif.aperture.toFixed(1)}` : null
+  $: exifIso = photo.exif?.iso ? `ISO ${photo.exif.iso}` : null
+  $: exifDate = photo.exif?.dateTaken ? formatDate(photo.exif.dateTaken) : null
+
   // The letterboxed rect of the image *content* within the square stage (CSS px).
   $: contentRect = (() => {
     const iw = photo.fullWidth || 1
@@ -54,6 +63,15 @@
 
   function clamp(v: number, min: number, max: number): number {
     return v < min ? min : v > max ? max : v
+  }
+
+  function formatShutter(s: number): string {
+    if (s >= 1) return `${s}s`
+    return `1/${Math.round(1 / s)}s`
+  }
+
+  function formatDate(d: string): string {
+    return d.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3').slice(0, 16)
   }
 
   function setExposure(v: number): void {
@@ -258,54 +276,58 @@
 
         <Histogram bins={photo.histogram} />
 
-        <div class="control">
-          <Slider
-            label="Exposure"
-            min={-3}
-            max={5}
-            step={0.1}
-            value={shownEV}
-            display={`${shownEV >= 0 ? '+' : ''}${shownEV.toFixed(2)} EV`}
-            zero={0}
-            onChange={setExposure}
-          />
-          <div class="row">
-            <button class:active={photo.adjustments.exposureMode === 'auto'} onclick={autoExposure}>Auto</button>
-            <button onclick={resetExposure}>Reset</button>
-          </div>
+        <span class="section">Exposure</span>
+        <Slider
+          min={-3}
+          max={5}
+          step={0.1}
+          value={shownEV}
+          zero={0}
+          onChange={setExposure}
+        />
+        <div class="row">
+          <button class:active={photo.adjustments.exposureMode === 'auto'} onclick={autoExposure}>Auto</button>
+          <button onclick={resetExposure}>Reset</button>
+          <span class="ev">{evLabel}</span>
         </div>
 
         {#if isRaw}
-          <div class="control">
-            <Slider
-              label="Temperature"
-              min={2500}
-              max={10000}
-              step={50}
-              value={photo.adjustments.temperature}
-              display={`${Math.round(photo.adjustments.temperature)}K`}
-              onChange={(v) => updateAdjustments(photo.id, { temperature: v })}
-            />
-            <div class="row">
-              <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>Neutral picker</button>
-            </div>
+          <span class="section">White balance</span>
+          <Slider
+            label="Temperature"
+            min={2500}
+            max={10000}
+            step={50}
+            value={photo.adjustments.temperature}
+            display={`${Math.round(photo.adjustments.temperature)}K`}
+            onChange={(v) => updateAdjustments(photo.id, { temperature: v })}
+          />
+          <div class="row">
+            <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>Neutral picker</button>
           </div>
         {/if}
 
-        <div class="control">
-          <div class="presets">
-            <button onclick={() => applyPreset(1)}>1:1</button>
-            <button onclick={() => applyPreset(2 / 3)}>2:3</button>
-            <button onclick={() => applyPreset(3 / 2)}>3:2</button>
-            <button onclick={resetCrop}>Original</button>
-          </div>
-          <p class="hint">Drag handles to resize · drag inside to move · Shift keeps ratio</p>
+        <span class="section">Crop</span>
+        <div class="presets">
+          <button onclick={() => applyPreset(1)}>1:1</button>
+          <button onclick={() => applyPreset(2 / 3)}>2:3</button>
+          <button onclick={() => applyPreset(3 / 2)}>3:2</button>
+          <button onclick={resetCrop}>Original</button>
         </div>
 
+        <span class="section">Image</span>
         <div class="info">
+          {#if exifCamera}<p class="line">{exifCamera}</p>{/if}
+          {#if photo.exif?.lens}<p class="line">{photo.exif.lens}</p>{/if}
+          {#if exifShutter || exifAperture || exifIso}
+            <p class="line">{[exifShutter, exifAperture, exifIso].filter(Boolean).join(' · ')}</p>
+          {/if}
+          {#if exifDate}<p class="line">{exifDate}</p>{/if}
           <p class="line">{photo.sourceType === 'raw' ? 'RAW' : 'JPEG'} · {photo.fullWidth} × {photo.fullHeight}</p>
           <p class="line">output {photo.width} × {photo.height} px</p>
         </div>
+
+        <p class="hint bottom-hint">Drag handles to resize · drag inside to move · Shift keeps ratio</p>
 
         <button class="close" onclick={onClose}>Close</button>
       </div>
@@ -423,10 +445,11 @@
   .h-s  { top: 100%; left: 50%; transform: translate(-50%, -50%); cursor: ns-resize; }
   .h-sw { top: 100%; left: 0; transform: translate(-50%, -50%); cursor: nesw-resize; }
   .h-w  { top: 50%; left: 0; transform: translate(-50%, -50%); cursor: ew-resize; }
-  .control {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+  .section {
+    color: var(--faint);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
   }
   .row {
     display: flex;
@@ -438,6 +461,13 @@
     background: var(--accent);
     color: var(--accent-ink);
     box-shadow: 0 0 14px rgba(255, 122, 69, 0.35);
+  }
+  .ev {
+    margin-left: auto;
+    color: var(--accent-2);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    white-space: nowrap;
   }
   .presets {
     display: flex;
@@ -455,12 +485,13 @@
     letter-spacing: 0.03em;
     line-height: 1.4;
   }
+  .bottom-hint {
+    margin-top: auto;
+  }
   .info {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    border-top: 1px solid var(--border);
-    padding-top: 10px;
   }
   .info .line {
     color: var(--faint);
@@ -469,7 +500,6 @@
     margin: 0;
   }
   .close {
-    margin-top: auto;
     width: 100%;
   }
 </style>

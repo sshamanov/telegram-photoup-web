@@ -1,5 +1,5 @@
 <script lang="ts">
-  export let label: string
+  export let label: string | null = null
   export let min = 0
   export let max = 1
   export let step = 0.01
@@ -10,10 +10,13 @@
 
   $: pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))
   $: zeroPct = zero === null ? null : Math.min(100, Math.max(0, ((zero - min) / (max - min)) * 100))
+  $: bare = label === null && display === null
 </script>
 
-<label class="slider">
-  <span class="label">{label}</span>
+<label class="slider" class:bare>
+  {#if label !== null}
+    <span class="label">{label}</span>
+  {/if}
   <span class="track">
     <input
       type="range"
@@ -28,7 +31,9 @@
       <span class="zero" style={`left:${zeroPct}%`}></span>
     {/if}
   </span>
-  <span class="value">{display ?? value.toFixed(2)}</span>
+  {#if display !== null}
+    <span class="value">{display}</span>
+  {/if}
 </label>
 
 <style>
@@ -37,6 +42,10 @@
     grid-template-columns: 96px 1fr 96px;
     align-items: center;
     gap: 16px;
+  }
+  .slider.bare {
+    grid-template-columns: 1fr;
+    gap: 0;
   }
   .label {
     color: var(--muted);

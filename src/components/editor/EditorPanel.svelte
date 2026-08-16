@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
   import type { Photo } from '../../stores/photos'
   import { updateAdjustments } from '../../stores/photos'
   import { pushToast } from '../../stores/ui'
@@ -9,6 +8,10 @@
 
   export let photo: Photo
   export let onClose: () => void = () => {}
+  export let onPrev: () => void = () => {}
+  export let onNext: () => void = () => {}
+  export let hasPrev = false
+  export let hasNext = false
 
   type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
   type DragState =
@@ -24,6 +27,7 @@
   let pickingNeutral = false
   let draftCrop: NormalizedCrop | null = null
   let drag: DragState | null = null
+  let currentPhotoId = ''
 
   $: isRaw = photo.sourceType === 'raw'
   $: shownEV = photo.adjustments.exposureMode === 'auto'
@@ -60,9 +64,18 @@
       `height:${draftCrop.height * contentRect.height}px`
     : ''
 
-  onMount(() => {
+  // Reset the crop frame when navigating to a different photo.
+  $: if (photo && photo.id !== currentPhotoId) {
+    currentPhotoId = photo.id
     draftCrop = photo.adjustments.crop ?? { x: 0, y: 0, width: 1, height: 1 }
-  })
+  }
+
+  function onKeyDown(event: KeyboardEvent): void {
+    const t = event.target as HTMLElement | null
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+    if (event.key === 'ArrowRight') onNext()
+    else if (event.key === 'ArrowLeft') onPrev()
+  }
 
   function clamp(v: number, min: number, max: number): number {
     return v < min ? min : v > max ? max : v
@@ -232,45 +245,43 @@
   }
 </script>
 
-<svelte:window onpointermove={onWindowPointerMove} onpointerup={onWindowPointerUp} onpointercancel={onWindowPointerUp} />
+<svelte:window onpointermove={onWindowPointerMove} onpointerup={onWindowPointerUp} onpointercancel={onWindowPointerUp} onkeydown={onKeyDown} />
 
 <div class="overlay">
   <div class="panel">
     <div class="body">
-      <div class="left">
-        <div class="preview" class:picking={pickingNeutral}>
-          <div
-            class="stage"
-            bind:this={stageEl}
-            bind:clientWidth={stageW}
-            bind:clientHeight={stageH}
-            role="img"
-            aria-label={photo.name}
-            onpointerdown={onStagePointerDown}
-          >
-            {#if photo.fullThumbUrl}
-              <!-- svelte-ignore a11y-click-events-have-key-events -->
-              <img bind:this={previewEl} src={photo.fullThumbUrl} alt={photo.name} />
-            {/if}
-            {#if draftCrop}
-              <div
-                class="crop-box"
-                role="group"
-                aria-label="Crop area — drag inside to move"
-                style={boxStyle}
-                onpointerdown={startMove}
-              >
-                <button type="button" class="h h-nw" data-handle="nw" aria-label="Resize crop top-left" onpointerdown={(e) => startResize(e, 'nw')}></button>
-                <button type="button" class="h h-n" data-handle="n" aria-label="Resize crop top" onpointerdown={(e) => startResize(e, 'n')}></button>
-                <button type="button" class="h h-ne" data-handle="ne" aria-label="Resize crop top-right" onpointerdown={(e) => startResize(e, 'ne')}></button>
-                <button type="button" class="h h-e" data-handle="e" aria-label="Resize crop right" onpointerdown={(e) => startResize(e, 'e')}></button>
-                <button type="button" class="h h-se" data-handle="se" aria-label="Resize crop bottom-right" onpointerdown={(e) => startResize(e, 'se')}></button>
-                <button type="button" class="h h-s" data-handle="s" aria-label="Resize crop bottom" onpointerdown={(e) => startResize(e, 's')}></button>
-                <button type="button" class="h h-sw" data-handle="sw" aria-label="Resize crop bottom-left" onpointerdown={(e) => startResize(e, 'sw')}></button>
-                <button type="button" class="h h-w" data-handle="w" aria-label="Resize crop left" onpointerdown={(e) => startResize(e, 'w')}></button>
-              </div>
-            {/if}
-          </div>
+      <div class="left" class:picking={pickingNeutral}>
+        <div
+          class="stage"
+          bind:this={stageEl}
+          bind:clientWidth={stageW}
+          bind:clientHeight={stageH}
+          role="img"
+          aria-label={photo.name}
+          onpointerdown={onStagePointerDown}
+        >
+          {#if photo.fullThumbUrl}
+            <!-- svelte-ignore a11y-click-events-have-key-events -->
+            <img bind:this={previewEl} src={photo.fullThumbUrl} alt={photo.name} />
+          {/if}
+          {#if draftCrop}
+            <div
+              class="crop-box"
+              role="group"
+              aria-label="Crop area — drag inside to move"
+              style={boxStyle}
+              onpointerdown={startMove}
+            >
+              <button type="button" class="h h-nw" data-handle="nw" aria-label="Resize crop top-left" onpointerdown={(e) => startResize(e, 'nw')}></button>
+              <button type="button" class="h h-n" data-handle="n" aria-label="Resize crop top" onpointerdown={(e) => startResize(e, 'n')}></button>
+              <button type="button" class="h h-ne" data-handle="ne" aria-label="Resize crop top-right" onpointerdown={(e) => startResize(e, 'ne')}></button>
+              <button type="button" class="h h-e" data-handle="e" aria-label="Resize crop right" onpointerdown={(e) => startResize(e, 'e')}></button>
+              <button type="button" class="h h-se" data-handle="se" aria-label="Resize crop bottom-right" onpointerdown={(e) => startResize(e, 'se')}></button>
+              <button type="button" class="h h-s" data-handle="s" aria-label="Resize crop bottom" onpointerdown={(e) => startResize(e, 's')}></button>
+              <button type="button" class="h h-sw" data-handle="sw" aria-label="Resize crop bottom-left" onpointerdown={(e) => startResize(e, 'sw')}></button>
+              <button type="button" class="h h-w" data-handle="w" aria-label="Resize crop left" onpointerdown={(e) => startResize(e, 'w')}></button>
+            </div>
+          {/if}
         </div>
       </div>
 
@@ -337,6 +348,11 @@
 
         <p class="hint bottom-hint">Drag handles to resize · drag inside to move · Shift keeps ratio</p>
 
+        <div class="nav">
+          <button onclick={onPrev} disabled={!hasPrev}>‹ Prev</button>
+          <button onclick={onNext} disabled={!hasNext}>Next ›</button>
+        </div>
+
         <button class="close" onclick={onClose}>Close</button>
       </div>
     </div>
@@ -373,11 +389,14 @@
     gap: 20px;
   }
   .left {
+    position: relative;
     flex: 1 1 auto;
     min-width: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    min-height: 0;
+    background: var(--bg-raise);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
   }
   .right {
     flex: 0 0 320px;
@@ -397,19 +416,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .preview {
-    position: relative;
-    background: var(--bg-raise);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-    aspect-ratio: 1 / 1;
-    width: min(100%, calc(100vh - 64px));
-  }
   .stage {
-    position: relative;
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    inset: 0;
     line-height: 0;
   }
   .stage img {
@@ -426,7 +435,7 @@
     box-shadow: 0 0 0 9999px rgba(6, 5, 4, 0.45);
     cursor: move;
   }
-  .preview.picking .crop-box {
+  .left.picking .crop-box {
     pointer-events: none;
   }
   .h {
@@ -506,6 +515,16 @@
     font-size: 11px;
     letter-spacing: 0.03em;
     margin: 0;
+  }
+  .nav {
+    display: flex;
+    gap: 8px;
+  }
+  .nav button {
+    flex: 1;
+  }
+  .nav button:disabled {
+    opacity: 0.35;
   }
   .close {
     width: 100%;

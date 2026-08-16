@@ -20,6 +20,9 @@
 
   $: selectedPhotos = $photos.filter((p) => p.selected && p.status === 'ready')
   $: editingPhoto = $photos.find((p) => p.id === editingId) ?? null
+  $: editingIndex = $photos.findIndex((p) => p.id === editingId)
+  $: canPrev = editingIndex > 0
+  $: canNext = editingIndex >= 0 && editingIndex < $photos.length - 1
 
   function openEditor(id: string): void {
     editingId = id
@@ -29,6 +32,22 @@
   function closeEditor(): void {
     if (editingId) releaseBase(editingId)
     editingId = null
+  }
+
+  function goPrev(): void {
+    if (!canPrev || editingId === null) return
+    navigateTo($photos[editingIndex - 1]!.id)
+  }
+
+  function goNext(): void {
+    if (!canNext || editingId === null) return
+    navigateTo($photos[editingIndex + 1]!.id)
+  }
+
+  function navigateTo(id: string): void {
+    if (editingId) releaseBase(editingId)
+    editingId = id
+    void ensureBase(id)
   }
 
   async function onLogout(): Promise<void> {
@@ -116,7 +135,14 @@
 {/if}
 
 {#if editingPhoto}
-  <EditorPanel photo={editingPhoto} onClose={closeEditor} />
+  <EditorPanel
+    photo={editingPhoto}
+    onClose={closeEditor}
+    onPrev={goPrev}
+    onNext={goNext}
+    hasPrev={canPrev}
+    hasNext={canNext}
+  />
 {/if}
 
 <style>

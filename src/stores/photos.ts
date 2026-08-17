@@ -120,6 +120,7 @@ async function refreshThumb(id: string, releaseAfter: boolean): Promise<void> {
     // While the photo is open in the editor only its live preview matters; the grid
     // thumbnail re-renders when the editor closes (avoids doing both per edit).
     const isFocused = id === focusedId
+    if (edge === 512) scheduleSettle(id)
     let thumbBlob: Blob | null = null
     let full: { blob: Blob; autoEV: number; histogram: Uint32Array }
     if (isFocused) {
@@ -164,9 +165,22 @@ export function setFocusedPhoto(id: string | null): void {
 /** While a slider is being dragged, re-render at a smaller preview (512) for speed;
  * on release the full 1024 render happens. */
 let previewDragging = false
+let settleTimer: ReturnType<typeof setTimeout> | undefined
 
 export function setPreviewDragging(v: boolean): void {
   previewDragging = v
+  clearTimeout(settleTimer)
+}
+
+/** Guard: after a low-res (512) drag render, always follow up with a full 1024
+ * render shortly after, so the preview can never be stuck at 512 if the slider's
+ * release event was missed. Reset whenever new drag activity arrives. */
+function scheduleSettle(id: string): void {
+  clearTimeout(settleTimer)
+  settleTimer = setTimeout(() => {
+    previewDragging = false
+    enqueue(id)
+  }, 350)
 }
 
 /** Close the editor for a photo: re-render its grid thumbnail with the final

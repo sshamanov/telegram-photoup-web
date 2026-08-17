@@ -308,9 +308,9 @@
     if (!ctx) return
     ctx.drawImage(img, 0, 0)
 
-    // Average a region (~3% of the image, clamped) so noise and mixed pixels don't
-    // skew the WB — a single pixel is far too sensitive.
-    const size = clamp(Math.round(Math.max(canvas.width, canvas.height) * 0.03), 5, 64)
+    // Average a fixed 7×7 area — the same as GIMP's grey-point picker (Lightroom
+    // uses 5×5). Larger than a single pixel so noise can't skew the WB.
+    const size = 7
     const half = Math.floor(size / 2)
     const sx = clamp(Math.floor(x * canvas.width) - half, 0, Math.max(0, canvas.width - size))
     const sy = clamp(Math.floor(y * canvas.height) - half, 0, Math.max(0, canvas.height - size))

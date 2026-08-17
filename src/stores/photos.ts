@@ -212,7 +212,7 @@ export function addPhotos(files: File[]): void {
     sourceType: detectSourceType(file),
     status: 'queued' as ProcessStatus,
     selected: true,
-    adjustments: { ...neutralAdjustments, exposureMode: 'manual' },
+    adjustments: { ...neutralAdjustments },
     thumbUrl: null,
     fullThumbUrl: null,
     width: 0,

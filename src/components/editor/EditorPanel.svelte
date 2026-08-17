@@ -26,6 +26,7 @@
   let stageW = 0
   let stageH = 0
   let pickingNeutral = false
+  let pickDragging = false
   let draftCrop: NormalizedCrop | null = null
   let drag: DragState | null = null
   let currentPhotoId = ''
@@ -112,6 +113,10 @@
   }
 
   function autoExposure(): void {
+    updateAdjustments(photo.id, { exposureMode: 'auto' })
+  }
+
+  function slideExposure(): void {
     // Aggressive auto ("film slide", hard clip).
     updateAdjustments(photo.id, { exposureMode: 'aggressive' })
   }
@@ -283,6 +288,10 @@
   }
 
   function onWindowPointerMove(event: PointerEvent): void {
+    if (pickDragging) {
+      void pickNeutral(event)
+      return
+    }
     if (!drag || !stageEl) return
     const dx = (event.clientX - drag.startX) / contentRect.width
     const dy = (event.clientY - drag.startY) / contentRect.height
@@ -302,13 +311,26 @@
   }
 
   function onWindowPointerUp(): void {
+    if (pickDragging) {
+      pickDragging = false
+      setPreviewDragging(false)
+      // Re-render at full res with the final pick.
+      updateAdjustments(photo.id, {})
+      return
+    }
     if (!drag) return
     drag = null
     commitCrop()
   }
 
   function onStagePointerDown(event: MouseEvent): void {
-    if (pickingNeutral) void pickNeutral(event)
+    if (pickingNeutral) {
+      // Persistent pick: update continuously while dragging, like a slider.
+      pickDragging = true
+      setPreviewDragging(true)
+      stageEl?.setPointerCapture((event as PointerEvent).pointerId)
+      void pickNeutral(event)
+    }
   }
 
   async function pickNeutral(event: MouseEvent): Promise<void> {
@@ -350,9 +372,9 @@
       return
     }
     // Reflect the pick on the warmth + hue sliders (Lightroom-style).
+    // Stays in pick mode so dragging updates continuously; exit via the Pick button.
     const { offset, hue } = wbFromPick(r, g, b, photo.camMatrix)
     updateAdjustments(photo.id, { wbOffset: offset, hue })
-    pickingNeutral = false
   }
 
   /** Aggressive auto WB: grey-world on the whole preview, biased warm (happy day). */
@@ -437,8 +459,9 @@
           onRelease={dragRelease(setExposure)}
         />
         <div class="row">
-          <button class:active={photo.adjustments.exposureMode === 'aggressive'} onclick={autoExposure}>Auto</button>
-          <button onclick={resetExposure}>Reset</button>
+          <button class:active={photo.adjustments.exposureMode === 'auto'} onclick={autoExposure}>Auto</button>
+          <button class:active={photo.adjustments.exposureMode === 'aggressive'} onclick={slideExposure}>Slide</button>
+          <button onclick={resetExposure}>Rest</button>
           <span class="ev">{evLabel}</span>
         </div>
 
@@ -464,8 +487,8 @@
           onRelease={dragRelease((v) => updateAdjustments(photo.id, { hue: v }))}
         />
         <div class="row">
-          <button onclick={autoWhiteBalance}>Auto WB</button>
-          <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>Picker</button>
+          <button onclick={autoWhiteBalance}>Auto</button>
+          <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>Pick</button>
           <button onclick={resetWb}>Reset</button>
           <span class="ev wb">{wbDisplay}</span>
         </div>
@@ -619,7 +642,13 @@
   .row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+  }
+  /* Compact buttons so the values stay visible with more controls per row. */
+  .row button {
+    padding: 7px 10px;
+    font-size: 12px;
+    flex-shrink: 0;
   }
   .row .active {
     border-color: var(--accent);
@@ -633,6 +662,9 @@
     font-variant-numeric: tabular-nums;
     font-size: 12px;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
   }
   .wb {
     color: var(--muted);

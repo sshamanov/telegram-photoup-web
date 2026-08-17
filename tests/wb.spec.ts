@@ -18,7 +18,7 @@ test('JPEG editor has a white balance section with a relative slider and grey pi
   await expect(page.locator('.h-se')).toBeVisible()
 
   // White balance section present for JPEG (no Kelvin slider).
-  await expect(page.getByRole('button', { name: 'Picker' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Pick' })).toBeVisible()
 
   // The grey-picker row shows the current correction and hue (0.00 · 0.00 at neutral).
   await expect(page.locator('.right .wb')).toHaveText('0.00 · 0.00')
@@ -60,13 +60,13 @@ test('grey picker drives the sliders', async ({ page }) => {
   await expect(page.locator('.right .wb')).toHaveText('0.00 · 0.00')
 
   // Pick the warm center — the sliders must move off neutral.
-  await page.getByRole('button', { name: 'Picker' }).click()
+  await page.getByRole('button', { name: 'Pick' }).click()
   const stage = await page.locator('.stage').boundingBox()
   await page.mouse.click(stage!.x + stage!.width / 2, stage!.y + stage!.height / 2)
 
   await expect(page.locator('.right .wb')).not.toHaveText('0.00 · 0.00')
 
   // WB reset returns the sliders to neutral (scope to the picker's row).
-  await page.locator('.right .row', { hasText: 'Picker' }).getByRole('button', { name: 'Reset' }).click()
+  await page.locator('.right .row', { hasText: 'Pick' }).getByRole('button', { name: 'Reset' }).click()
   await expect(page.locator('.right .wb')).toHaveText('0.00 · 0.00')
 })

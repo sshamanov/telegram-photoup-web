@@ -247,7 +247,7 @@ class CanvasBase implements DecodedBase {
   async render(crop: NormalizedCrop | null, size: Size, adjustments: Adjustments): Promise<RenderedResult> {
     const rect = cropRect(this.width, this.height, crop)
     const luminances = sampleLuminances(this.source, rect)
-    const autoEV = autoExposureEV(luminances, { maxEV: 4 })
+    const autoEV = autoExposureEV(luminances, { maxEV: 4, target: 180, percentile: 0.6 })
     const ev = adjustments.exposureMode === 'auto' ? autoEV : adjustments.exposureEV
     const canvas = await renderCanvas(this.source, rect, size, ev, adjustments)
     return { canvas, autoEV }
@@ -278,7 +278,7 @@ class LinearRgbBase implements DecodedBase {
 
     const evSample = fitWithin(rect.width, rect.height, 128)
     const lums = this.luminances(src, rect, evSample)
-    const autoEV = autoExposureEV(lums, { maxEV: 4 })
+    const autoEV = autoExposureEV(lums, { maxEV: 4, target: 180, percentile: 0.6 })
     const ev = adjustments.exposureMode === 'auto' ? autoEV : adjustments.exposureEV
 
     const r = downscaleCrop(src.r, src.width, src.height, rect, size.width, size.height)

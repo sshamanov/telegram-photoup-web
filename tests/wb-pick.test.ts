@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { wbFromPick, cameraCurveByte, invert3x3, wbTransform3x3 } from '../src/lib/image/process'
+import { wbFromPick, autoWb, cameraCurveByte, invert3x3, wbTransform3x3 } from '../src/lib/image/process'
 
 function matVec(m: number[][], v: number[]): number[] {
   return [
@@ -77,6 +77,14 @@ describe('preview WB transform matches the pre-matrix export', () => {
     const { offset, hue } = wbFromPick(p[0]!, p[1]!, p[2]!, M)
     expect(offset).toBeCloseTo(0, 2)
     expect(hue).toBeCloseTo(0, 2)
+  })
+
+  it('autoWb is gentle and warms slightly without tint drift', () => {
+    const neutral = autoWb(128, 128, 128, M)
+    expect(neutral.offset).toBeCloseTo(0.15, 2) // warm bias
+    expect(neutral.hue).toBeCloseTo(0, 2)
+    const warm = autoWb(170, 130, 95, M)
+    expect(Math.abs(warm.hue)).toBeLessThan(0.5) // bounded, no big green/magenta drift
   })
 
   it('a warm-cast pixel picks a correction that reduces the cast', () => {

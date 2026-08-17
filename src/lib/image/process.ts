@@ -138,12 +138,15 @@ export function wbTransform3x3(M: number[][], Minv: number[][], wb: { r: number;
   return t
 }
 
-/** Aggressive auto WB ("happy day" look): grey-world on the image mean, biased
- * warm to avoid a blue shift (Nikon Auto2-ish). */
+/** Auto WB ("happy day" look): grey-world on a neutral reference, applied gently.
+ * The temperature is corrected moderately, but the green↔magenta tint is kept
+ * very conservative so it can't drift into visible green/magenta casts. */
 export function autoWb(r: number, g: number, b: number, camMatrix?: number[][] | null): { offset: number; hue: number } {
   const wb = wbFromPick(r, g, b, camMatrix)
-  const warmBias = 0.2
-  return { offset: clamp(wb.offset + warmBias, -2, 2), hue: wb.hue }
+  const offsetStrength = 0.6 // apply a fraction of the grey-world warmth
+  const hueStrength = 0.3 // keep the tint very gentle
+  const warmBias = 0.15 // "happy day" warmth, avoids a blue shift
+  return { offset: clamp(wb.offset * offsetStrength + warmBias, -2, 2), hue: wb.hue * hueStrength }
 }
 
 /** Map a picked grey pixel onto the warmth + hue sliders. With the camera color

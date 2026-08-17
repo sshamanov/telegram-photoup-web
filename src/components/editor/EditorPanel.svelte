@@ -393,15 +393,38 @@
     if (!ctx) return
     ctx.drawImage(img, 0, 0, 64, 64)
     const d = ctx.getImageData(0, 0, 64, 64).data
+
+    // Neutral-reference selection: use only near-neutral, reasonably bright pixels
+    // so saturated scene colours (grass, sky, walls) don't pull the WB into
+    // green/magenta. Fall back to the whole-image mean if there are too few.
     let sr = 0
     let sg = 0
     let sb = 0
     let n = 0
     for (let i = 0; i < d.length; i += 4) {
-      sr += d[i]!
-      sg += d[i + 1]!
-      sb += d[i + 2]!
-      n++
+      const r = d[i]!
+      const g = d[i + 1]!
+      const b = d[i + 2]!
+      const max = Math.max(r, g, b)
+      const min = Math.min(r, g, b)
+      if (max - min < 60 && 0.2126 * r + 0.7152 * g + 0.0722 * b > 60) {
+        sr += r
+        sg += g
+        sb += b
+        n++
+      }
+    }
+    if (n < 16) {
+      sr = 0
+      sg = 0
+      sb = 0
+      n = 0
+      for (let i = 0; i < d.length; i += 4) {
+        sr += d[i]!
+        sg += d[i + 1]!
+        sb += d[i + 2]!
+        n++
+      }
     }
     const { offset, hue } = autoWb(sr / n, sg / n, sb / n, photo.camMatrix)
     updateAdjustments(photo.id, { wbOffset: offset, hue })

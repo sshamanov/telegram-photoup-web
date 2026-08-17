@@ -27,6 +27,7 @@
   let stageH = 0
   let pickingNeutral = false
   let pickDragging = false
+  let pickMoved = false
   let draftCrop: NormalizedCrop | null = null
   let drag: DragState | null = null
   let currentPhotoId = ''
@@ -289,6 +290,7 @@
 
   function onWindowPointerMove(event: PointerEvent): void {
     if (pickDragging) {
+      pickMoved = true
       void pickNeutral(event)
       return
     }
@@ -328,6 +330,7 @@
     if (pickingNeutral) {
       // Persistent pick: update continuously while dragging, like a slider.
       pickDragging = true
+      pickMoved = false
       setPreviewDragging(true)
       stageEl?.setPointerCapture((event as PointerEvent).pointerId)
       void pickNeutral(event)
@@ -369,7 +372,8 @@
     const b = sb / n
     const gray = (r + g + b) / 3
     if (gray < 8 || gray > 247) {
-      pushToast('error', 'Pick a neutral area (not black or blown out)')
+      // Only inform on the initial press — not while dragging over dark/bright areas.
+      if (!pickMoved) pushToast('error', 'Pick a neutral area (not black or blown out)')
       return
     }
     // Reflect the pick on the warmth + hue sliders (Lightroom-style).

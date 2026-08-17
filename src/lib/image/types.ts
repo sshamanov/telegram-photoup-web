@@ -26,7 +26,7 @@ export interface WbGains {
   b: number
 }
 
-export type ExposureMode = 'auto' | 'manual'
+export type ExposureMode = 'auto' | 'aggressive' | 'manual'
 
 export interface Adjustments {
   exposureMode: ExposureMode
@@ -38,7 +38,7 @@ export interface Adjustments {
   crop: NormalizedCrop | null
 }
 
-/** "Reset" baseline: 0 EV (manual), camera WB / no change, no crop. */
+/** "Reset" baseline: 0 EV (manual, no auto), camera WB / no change, no crop. */
 export const neutralAdjustments: Adjustments = {
   exposureMode: 'manual',
   exposureEV: 0,

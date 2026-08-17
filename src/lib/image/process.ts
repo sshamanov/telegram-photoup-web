@@ -48,11 +48,11 @@ export function cameraCurveByte(v: number): number {
  * 2560px export. Index = linear value * 32767.5 covering linear [0, 2] (the rolloff
  * saturates by 2); larger values clip to white.
  */
-function buildToneLut(applyCameraCurve: boolean): Uint8Array {
+function buildToneLut(applyCameraCurve: boolean, hardClip = false): Uint8Array {
   const lut = new Uint8Array(65536)
   for (let i = 0; i < 65536; i++) {
     const x = (i / 65535) * 2
-    let b = linearToSrgbByte(highlightRolloff(x))
+    let b = hardClip ? linearToSrgbByte(x) : linearToSrgbByte(highlightRolloff(x))
     if (applyCameraCurve) b = cameraCurveByte(b)
     lut[i] = b
   }
@@ -61,6 +61,9 @@ function buildToneLut(applyCameraCurve: boolean): Uint8Array {
 
 const JPEG_TONE_LUT = buildToneLut(false)
 const RAW_TONE_LUT = buildToneLut(true)
+// Aggressive auto ("film slide"): no highlight rolloff — highlights clip hard.
+const JPEG_HARD_LUT = buildToneLut(false, true)
+const RAW_HARD_LUT = buildToneLut(true, true)
 
 function toneIndex(v: number): number {
   return clamp(v * 32767.5, 0, 65535) | 0
@@ -135,6 +138,14 @@ export function wbTransform3x3(M: number[][], Minv: number[][], wb: { r: number;
   return t
 }
 
+/** Aggressive auto WB ("happy day" look): grey-world on the image mean, biased
+ * warm to avoid a blue shift (Nikon Auto2-ish). */
+export function autoWb(r: number, g: number, b: number, camMatrix?: number[][] | null): { offset: number; hue: number } {
+  const wb = wbFromPick(r, g, b, camMatrix)
+  const warmBias = 0.2
+  return { offset: clamp(wb.offset + warmBias, -2, 2), hue: wb.hue }
+}
+
 /** Map a picked grey pixel onto the warmth + hue sliders. With the camera color
  * matrix, invert through T = M·diag(wb)·M⁻¹ so the pixel lands exactly neutral. */
 export function wbFromPick(r: number, g: number, b: number, camMatrix?: number[][] | null): { offset: number; hue: number } {
@@ -191,15 +202,16 @@ export function exportWbMul(camMul: number[], adjustments: Adjustments): [number
   return [r / g, 1, b / g, g2 / g]
 }
 
-function applyPixelTransform(data: Uint8ClampedArray, ev: number, adjustments: Adjustments): void {
+function applyPixelTransform(data: Uint8ClampedArray, ev: number, adjustments: Adjustments, hardClip = false): void {
   const { r: gainR, g: gainG, b: gainB } = gainCoefficients(ev, adjustments)
+  const lut = hardClip ? JPEG_HARD_LUT : JPEG_TONE_LUT
   for (let i = 0; i < data.length; i += 4) {
     const r = SRGB_TO_LINEAR[data[i]!]!
     const g = SRGB_TO_LINEAR[data[i + 1]!]!
     const b = SRGB_TO_LINEAR[data[i + 2]!]!
-    data[i] = JPEG_TONE_LUT[toneIndex(r * gainR)]!
-    data[i + 1] = JPEG_TONE_LUT[toneIndex(g * gainG)]!
-    data[i + 2] = JPEG_TONE_LUT[toneIndex(b * gainB)]!
+    data[i] = lut[toneIndex(r * gainR)]!
+    data[i + 1] = lut[toneIndex(g * gainG)]!
+    data[i + 2] = lut[toneIndex(b * gainB)]!
   }
 }
 
@@ -211,9 +223,11 @@ function applyLinearTransform(
   adjustments: Adjustments,
   out: Uint8ClampedArray,
   camMatrix: number[][] | null = null,
+  hardClip = false,
 ): void {
   const gain = Math.pow(2, ev)
   const wb = wbGains(adjustments)
+  const lut = hardClip ? RAW_HARD_LUT : RAW_TONE_LUT
   // With the camera color matrix, apply the WB as T = M·diag(wb)·M⁻¹ so the
   // preview matches the pre-matrix userMul export. Fall back to per-channel gains.
   const Minv = camMatrix ? invert3x3(camMatrix) : []
@@ -228,9 +242,9 @@ function applyLinearTransform(
       const r1 = (t[0]! * r0 + t[1]! * g0 + t[2]! * b0) * gain
       const g1 = (t[3]! * r0 + t[4]! * g0 + t[5]! * b0) * gain
       const b1 = (t[6]! * r0 + t[7]! * g0 + t[8]! * b0) * gain
-      out[o] = RAW_TONE_LUT[toneIndex(r1)]!
-      out[o + 1] = RAW_TONE_LUT[toneIndex(g1)]!
-      out[o + 2] = RAW_TONE_LUT[toneIndex(b1)]!
+      out[o] = lut[toneIndex(r1)]!
+      out[o + 1] = lut[toneIndex(g1)]!
+      out[o + 2] = lut[toneIndex(b1)]!
       out[o + 3] = 255
     }
     return
@@ -239,9 +253,9 @@ function applyLinearTransform(
   for (let i = 0; i < r.length; i++) {
     const o = i * 4
     // Combined rolloff + sRGB + camera-Standard curve via LUT.
-    out[o] = RAW_TONE_LUT[toneIndex(r[i]! * gain * wb.r)]!
-    out[o + 1] = RAW_TONE_LUT[toneIndex(g[i]! * gain * wb.g)]!
-    out[o + 2] = RAW_TONE_LUT[toneIndex(b[i]! * gain * wb.b)]!
+    out[o] = lut[toneIndex(r[i]! * gain * wb.r)]!
+    out[o + 1] = lut[toneIndex(g[i]! * gain * wb.g)]!
+    out[o + 2] = lut[toneIndex(b[i]! * gain * wb.b)]!
     out[o + 3] = 255
   }
 }
@@ -270,13 +284,14 @@ async function renderCanvas(
   size: { width: number; height: number },
   ev: number,
   adjustments: Adjustments,
+  hardClip = false,
 ): Promise<OffscreenCanvas> {
   const canvas = new OffscreenCanvas(size.width, size.height)
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!
   ctx.imageSmoothingQuality = 'medium'
   ctx.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, size.width, size.height)
   const imageData = ctx.getImageData(0, 0, size.width, size.height)
-  applyPixelTransform(imageData.data, ev, adjustments)
+  applyPixelTransform(imageData.data, ev, adjustments, hardClip)
   ctx.putImageData(imageData, 0, 0)
   return canvas
 }
@@ -352,9 +367,10 @@ class CanvasBase implements DecodedBase {
   async render(crop: NormalizedCrop | null, size: Size, adjustments: Adjustments): Promise<RenderedResult> {
     const rect = cropRect(this.width, this.height, crop)
     const luminances = sampleLuminances(this.source, rect)
-    const autoEV = autoExposureEV(luminances, { maxEV: 4, target: 180, percentile: 0.6 })
-    const ev = adjustments.exposureMode === 'auto' ? autoEV : adjustments.exposureEV
-    const canvas = await renderCanvas(this.source, rect, size, ev, adjustments)
+    const aggressive = adjustments.exposureMode === 'aggressive'
+    const autoEV = autoExposureEV(luminances, { maxEV: 4, target: aggressive ? 230 : 180, percentile: 0.6 })
+    const ev = adjustments.exposureMode === 'manual' ? adjustments.exposureEV : autoEV
+    const canvas = await renderCanvas(this.source, rect, size, ev, adjustments, aggressive)
     return { canvas, autoEV }
   }
 
@@ -385,15 +401,16 @@ class LinearRgbBase implements DecodedBase {
 
     const evSample = fitWithin(rect.width, rect.height, 128)
     const lums = this.luminances(src, rect, evSample)
-    const autoEV = autoExposureEV(lums, { maxEV: 4, target: 180, percentile: 0.6 })
-    const ev = adjustments.exposureMode === 'auto' ? autoEV : adjustments.exposureEV
+    const aggressive = adjustments.exposureMode === 'aggressive'
+    const autoEV = autoExposureEV(lums, { maxEV: 4, target: aggressive ? 230 : 180, percentile: 0.6 })
+    const ev = adjustments.exposureMode === 'manual' ? adjustments.exposureEV : autoEV
 
     const r = downscaleCrop(src.r, src.width, src.height, rect, size.width, size.height)
     const g = downscaleCrop(src.g, src.width, src.height, rect, size.width, size.height)
     const b = downscaleCrop(src.b, src.width, src.height, rect, size.width, size.height)
 
     const imageData = new ImageData(size.width, size.height)
-    applyLinearTransform(r, g, b, ev, adjustments, imageData.data, this.camMatrix)
+    applyLinearTransform(r, g, b, ev, adjustments, imageData.data, this.camMatrix, aggressive)
 
     const canvas = new OffscreenCanvas(size.width, size.height)
     const ctx = canvas.getContext('2d')!

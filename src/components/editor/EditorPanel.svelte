@@ -3,7 +3,7 @@
   import { updateAdjustments, setPreviewDragging } from '../../stores/photos'
   import { pushToast } from '../../stores/ui'
   import type { NormalizedCrop } from '../../lib/image/types'
-  import { wbFromPick } from '../../lib/image/process'
+  import { wbFromPick, autoWb } from '../../lib/image/process'
   import Slider from './Slider.svelte'
   import Histogram from './Histogram.svelte'
 
@@ -31,7 +31,7 @@
   let currentPhotoId = ''
 
   $: isRaw = photo.sourceType === 'raw'
-  $: shownEV = photo.adjustments.exposureMode === 'auto'
+  $: shownEV = photo.adjustments.exposureMode !== 'manual'
     ? (photo.autoEV ?? photo.adjustments.exposureEV)
     : photo.adjustments.exposureEV
 
@@ -112,7 +112,8 @@
   }
 
   function autoExposure(): void {
-    updateAdjustments(photo.id, { exposureMode: 'auto' })
+    // Aggressive auto ("film slide", hard clip).
+    updateAdjustments(photo.id, { exposureMode: 'aggressive' })
   }
 
   function resetExposure(): void {
@@ -353,6 +354,31 @@
     updateAdjustments(photo.id, { wbOffset: offset, hue })
     pickingNeutral = false
   }
+
+  /** Aggressive auto WB: grey-world on the whole preview, biased warm (happy day). */
+  async function autoWhiteBalance(): Promise<void> {
+    const img = previewEl
+    if (!img || !img.naturalWidth) return
+    const canvas = document.createElement('canvas')
+    canvas.width = 64
+    canvas.height = 64
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(img, 0, 0, 64, 64)
+    const d = ctx.getImageData(0, 0, 64, 64).data
+    let sr = 0
+    let sg = 0
+    let sb = 0
+    let n = 0
+    for (let i = 0; i < d.length; i += 4) {
+      sr += d[i]!
+      sg += d[i + 1]!
+      sb += d[i + 2]!
+      n++
+    }
+    const { offset, hue } = autoWb(sr / n, sg / n, sb / n, photo.camMatrix)
+    updateAdjustments(photo.id, { wbOffset: offset, hue })
+  }
 </script>
 
 <svelte:window onpointermove={onWindowPointerMove} onpointerup={onWindowPointerUp} onpointercancel={onWindowPointerUp} onkeydown={onKeyDown} />
@@ -411,7 +437,7 @@
           onRelease={dragRelease(setExposure)}
         />
         <div class="row">
-          <button class:active={photo.adjustments.exposureMode === 'auto'} onclick={autoExposure}>Auto</button>
+          <button class:active={photo.adjustments.exposureMode === 'aggressive'} onclick={autoExposure}>Auto</button>
           <button onclick={resetExposure}>Reset</button>
           <span class="ev">{evLabel}</span>
         </div>
@@ -438,6 +464,7 @@
           onRelease={dragRelease((v) => updateAdjustments(photo.id, { hue: v }))}
         />
         <div class="row">
+          <button onclick={autoWhiteBalance}>Auto WB</button>
           <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>Picker</button>
           <button onclick={resetWb}>Reset</button>
           <span class="ev wb">{wbDisplay}</span>

@@ -313,6 +313,7 @@
   function onWindowPointerUp(): void {
     if (pickDragging) {
       pickDragging = false
+      pickingNeutral = false // pick mode ends on release
       setPreviewDragging(false)
       // Re-render at full res with the final pick.
       updateAdjustments(photo.id, {})
@@ -416,11 +417,12 @@
           bind:clientHeight={stageH}
           role="img"
           aria-label={photo.name}
+          ondragstart={(e) => e.preventDefault()}
           onpointerdown={onStagePointerDown}
         >
           {#if photo.fullThumbUrl}
             <!-- svelte-ignore a11y-click-events-have-key-events -->
-            <img bind:this={previewEl} src={photo.fullThumbUrl} alt={photo.name} />
+            <img bind:this={previewEl} src={photo.fullThumbUrl} alt={photo.name} draggable="false" />
           {/if}
           {#if draftCrop}
             <div

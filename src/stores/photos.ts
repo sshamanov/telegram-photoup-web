@@ -112,24 +112,35 @@ async function refreshThumb(id: string, releaseAfter: boolean): Promise<void> {
     const srcH = latest.sourceType === 'raw' ? base.height * 2 : base.height
     const outRect = cropRect(srcW, srcH, latest.adjustments.crop)
     const dims = fitWithin(outRect.width, outRect.height, 2560)
-    const { blob, autoEV, histogram } = await renderThumb(base, latest.adjustments)
-    // The full (uncropped) preview is the crop editor's working surface.
-    const full = await renderThumb(base, { ...latest.adjustments, crop: null })
+    // During a slider drag, render at 512 for responsiveness; 1024 once released.
+    const edge = previewDragging ? 512 : 1024
+
+    // While the photo is open in the editor only its live preview matters; the grid
+    // thumbnail re-renders when the editor closes (avoids doing both per edit).
+    const isFocused = id === focusedId
+    let thumbBlob: Blob | null = null
+    let full: { blob: Blob; autoEV: number; histogram: Uint32Array }
+    if (isFocused) {
+      full = await renderThumb(base, { ...latest.adjustments, crop: null }, edge)
+    } else {
+      thumbBlob = (await renderThumb(base, latest.adjustments, edge)).blob
+      full = await renderThumb(base, { ...latest.adjustments, crop: null }, edge)
+    }
 
     const current = get(photos).find((p) => p.id === id)
     if (!current) return
-    if (current.thumbUrl) URL.revokeObjectURL(current.thumbUrl)
+    if (thumbBlob && current.thumbUrl) URL.revokeObjectURL(current.thumbUrl)
     if (current.fullThumbUrl) URL.revokeObjectURL(current.fullThumbUrl)
     patchPhoto(id, {
       status: 'ready',
-      thumbUrl: URL.createObjectURL(blob),
+      ...(thumbBlob ? { thumbUrl: URL.createObjectURL(thumbBlob) } : {}),
       fullThumbUrl: URL.createObjectURL(full.blob),
       width: dims.width,
       height: dims.height,
       fullWidth: base.width,
       fullHeight: base.height,
-      autoEV,
-      histogram,
+      autoEV: full.autoEV,
+      histogram: full.histogram,
     })
 
     if (releaseAfter) releaseBase(id)
@@ -148,11 +159,37 @@ export function setFocusedPhoto(id: string | null): void {
   focusedId = id
 }
 
+/** While a slider is being dragged, re-render at a smaller preview (512) for speed;
+ * on release the full 1024 render happens. */
+let previewDragging = false
+
+export function setPreviewDragging(v: boolean): void {
+  previewDragging = v
+}
+
+/** Close the editor for a photo: re-render its grid thumbnail with the final
+ * edits (the focused skip is now off), then release the decoded base. */
+export function closePhoto(id: string): void {
+  setFocusedPhoto(null)
+  enqueue(id, true)
+}
+
+let drainScheduled = false
+function scheduleDrain(): void {
+  if (drainScheduled) return
+  drainScheduled = true
+  // Batch edits that land in the same frame into a single drain.
+  requestAnimationFrame(() => {
+    drainScheduled = false
+    void drain()
+  })
+}
+
 function enqueue(id: string, releaseAfter = false, priority = false): void {
   if (queue.some((q) => q.id === id)) return
   if (priority) queue.unshift({ id, releaseAfter })
   else queue.push({ id, releaseAfter })
-  void drain()
+  scheduleDrain()
 }
 
 async function drain(): Promise<void> {

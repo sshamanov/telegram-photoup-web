@@ -8,6 +8,8 @@
   export let zero: number | null = null
   export let zeroLabel = '0'
   export let onChange: (v: number) => void = () => {}
+  /** Fired on release (input `change`), after the drag has settled. */
+  export let onRelease: (v: number) => void = () => {}
 
   $: pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))
   $: zeroPct = zero === null ? null : Math.min(100, Math.max(0, ((zero - min) / (max - min)) * 100))
@@ -28,6 +30,7 @@
       {value}
       style={`--pct:${pct}%`}
       oninput={(e) => onChange(Number(e.currentTarget.value))}
+      onchange={(e) => onRelease(Number(e.currentTarget.value))}
     />
     {#if zeroPct !== null}
       <span class="zero" data-label={zeroLabel} style={`left:${zeroPct}%`}></span>

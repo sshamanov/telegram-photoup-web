@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Photo } from '../../stores/photos'
-  import { updateAdjustments } from '../../stores/photos'
+  import { updateAdjustments, setPreviewDragging } from '../../stores/photos'
   import { pushToast } from '../../stores/ui'
   import type { NormalizedCrop } from '../../lib/image/types'
   import { wbFromPick } from '../../lib/image/process'
@@ -94,6 +94,21 @@
 
   function setExposure(v: number): void {
     updateAdjustments(photo.id, { exposureMode: 'manual', exposureEV: v })
+  }
+
+  // While a slider is dragged, re-render at 512 for responsiveness; on release a
+  // full 1024 render happens.
+  function dragChange(update: (v: number) => void): (v: number) => void {
+    return (v: number) => {
+      setPreviewDragging(true)
+      update(v)
+    }
+  }
+  function dragRelease(update: (v: number) => void): (v: number) => void {
+    return (v: number) => {
+      setPreviewDragging(false)
+      update(v)
+    }
   }
 
   function autoExposure(): void {
@@ -392,7 +407,8 @@
           step={0.1}
           value={shownEV}
           zero={0}
-          onChange={setExposure}
+          onChange={dragChange(setExposure)}
+          onRelease={dragRelease(setExposure)}
         />
         <div class="row">
           <button class:active={photo.adjustments.exposureMode === 'auto'} onclick={autoExposure}>Auto</button>
@@ -408,7 +424,8 @@
           value={photo.adjustments.wbOffset}
           zero={0}
           zeroLabel="0"
-          onChange={(v) => updateAdjustments(photo.id, { wbOffset: v })}
+          onChange={dragChange((v) => updateAdjustments(photo.id, { wbOffset: v }))}
+          onRelease={dragRelease((v) => updateAdjustments(photo.id, { wbOffset: v }))}
         />
         <Slider
           min={-2}
@@ -417,7 +434,8 @@
           value={photo.adjustments.hue}
           zero={0}
           zeroLabel="0"
-          onChange={(v) => updateAdjustments(photo.id, { hue: v })}
+          onChange={dragChange((v) => updateAdjustments(photo.id, { hue: v }))}
+          onRelease={dragRelease((v) => updateAdjustments(photo.id, { hue: v }))}
         />
         <div class="row">
           <button class:active={pickingNeutral} onclick={() => (pickingNeutral = !pickingNeutral)}>Picker</button>

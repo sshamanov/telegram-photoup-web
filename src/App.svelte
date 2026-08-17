@@ -1,6 +1,6 @@
 <script lang="ts">
   import { authState, getCurrentAdapter, logout } from './stores/telegram'
-  import { photos, clearPhotos, removePhotos, renderExports, ensureBase, releaseBase, setFocusedPhoto } from './stores/photos'
+  import { photos, clearPhotos, removePhotos, renderExports, ensureBase, setFocusedPhoto, closePhoto } from './stores/photos'
   import { settings } from './stores/settings'
   import { pushToast } from './stores/ui'
   import AuthScreen from './components/auth/AuthScreen.svelte'
@@ -38,9 +38,9 @@
   }
 
   function closeEditor(): void {
-    setFocusedPhoto(null)
-    if (editingId) releaseBase(editingId)
+    const id = editingId
     editingId = null
+    if (id) closePhoto(id)
   }
 
   function goPrev(): void {
@@ -54,9 +54,10 @@
   }
 
   function navigateTo(id: string): void {
+    const prev = editingId
     setFocusedPhoto(id)
-    if (editingId) releaseBase(editingId)
     editingId = id
+    if (prev && prev !== id) closePhoto(prev)
     void ensureBase(id)
   }
 

@@ -66,16 +66,73 @@ function toneIndex(v: number): number {
   return clamp(v * 32767.5, 0, 65535) | 0
 }
 
-function gainCoefficients(ev: number, adjustments: Adjustments): { r: number; g: number; b: number } {
-  const gain = Math.pow(2, ev)
-  // Relative warmth offset: 0 = no change (the source's default WB is already
-  // baked at decode for both RAW and JPEG). + = warmer (more R, less B).
+/** Warmth offset + hue as per-channel WB gains (exposure is separate). */
+function wbGains(adjustments: Adjustments): { r: number; g: number; b: number } {
+  // Relative warmth offset: 0 = no change. + = warmer (more R, less B).
   const tempR = Math.pow(2, adjustments.wbOffset * 0.5)
   const tempB = Math.pow(2, -adjustments.wbOffset * 0.5)
   // Hue: green↔magenta axis. +1 = magenta (more R/B, less G); -1 = green.
   const hueG = Math.pow(2, -adjustments.hue * 0.5)
   const hueRB = Math.pow(2, adjustments.hue * 0.25)
-  return { r: gain * tempR * hueRB, g: gain * hueG, b: gain * tempB * hueRB }
+  return { r: tempR * hueRB, g: hueG, b: tempB * hueRB }
+}
+
+function gainCoefficients(ev: number, adjustments: Adjustments): { r: number; g: number; b: number } {
+  const gain = Math.pow(2, ev)
+  const wb = wbGains(adjustments)
+  return { r: gain * wb.r, g: gain * wb.g, b: gain * wb.b }
+}
+
+export function invert3x3(m: number[][]): number[][] {
+  const a0 = m[0]![0]!
+  const a1 = m[0]![1]!
+  const a2 = m[0]![2]!
+  const b0 = m[1]![0]!
+  const b1 = m[1]![1]!
+  const b2 = m[1]![2]!
+  const c0 = m[2]![0]!
+  const c1 = m[2]![1]!
+  const c2 = m[2]![2]!
+  // Cofactors.
+  const C00 = b1 * c2 - b2 * c1
+  const C01 = b2 * c0 - b0 * c2
+  const C02 = b0 * c1 - b1 * c0
+  const C10 = a2 * c1 - a1 * c2
+  const C11 = a0 * c2 - a2 * c0
+  const C12 = a1 * c0 - a0 * c1
+  const C20 = a1 * b2 - a2 * b1
+  const C21 = a2 * b0 - a0 * b2
+  const C22 = a0 * b1 - a1 * b0
+  const det = a0 * C00 + b0 * C10 + c0 * C20
+  if (Math.abs(det) < 1e-12) return []
+  const inv = 1 / det
+  return [
+    [inv * C00, inv * C10, inv * C20],
+    [inv * C01, inv * C11, inv * C21],
+    [inv * C02, inv * C12, inv * C22],
+  ]
+}
+
+/**
+ * The preview WB transform that reproduces the pre-matrix userMul export:
+ * T = M · diag(wb) · M⁻¹ applied to the baked camera-WB sRGB-linear data.
+ * Returns the 3×3 as a flat row-major [t00,t01,t02,t10,...,t22].
+ */
+export function wbTransform3x3(M: number[][], Minv: number[][], wb: { r: number; g: number; b: number }): number[] | null {
+  // M·diag(wb) — scale columns of M.
+  const a = [
+    M[0]![0]! * wb.r, M[0]![1]! * wb.g, M[0]![2]! * wb.b,
+    M[1]![0]! * wb.r, M[1]![1]! * wb.g, M[1]![2]! * wb.b,
+    M[2]![0]! * wb.r, M[2]![1]! * wb.g, M[2]![2]! * wb.b,
+  ]
+  if (Minv.length !== 3) return null
+  const t: number[] = []
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      t.push(a[i * 3]! * Minv[0]![j]! + a[i * 3 + 1]! * Minv[1]![j]! + a[i * 3 + 2]! * Minv[2]![j]!)
+    }
+  }
+  return t
 }
 
 /** Map a picked grey pixel onto the temperature + hue sliders (Lightroom-style). */
@@ -130,14 +187,38 @@ function applyLinearTransform(
   ev: number,
   adjustments: Adjustments,
   out: Uint8ClampedArray,
+  camMatrix: number[][] | null = null,
 ): void {
-  const { r: gainR, g: gainG, b: gainB } = gainCoefficients(ev, adjustments)
+  const gain = Math.pow(2, ev)
+  const wb = wbGains(adjustments)
+  // With the camera color matrix, apply the WB as T = M·diag(wb)·M⁻¹ so the
+  // preview matches the pre-matrix userMul export. Fall back to per-channel gains.
+  const Minv = camMatrix ? invert3x3(camMatrix) : []
+  const t = camMatrix ? wbTransform3x3(camMatrix, Minv, wb) : null
+
+  if (t) {
+    for (let i = 0; i < r.length; i++) {
+      const o = i * 4
+      const r0 = r[i]!
+      const g0 = g[i]!
+      const b0 = b[i]!
+      const r1 = (t[0]! * r0 + t[1]! * g0 + t[2]! * b0) * gain
+      const g1 = (t[3]! * r0 + t[4]! * g0 + t[5]! * b0) * gain
+      const b1 = (t[6]! * r0 + t[7]! * g0 + t[8]! * b0) * gain
+      out[o] = RAW_TONE_LUT[toneIndex(r1)]!
+      out[o + 1] = RAW_TONE_LUT[toneIndex(g1)]!
+      out[o + 2] = RAW_TONE_LUT[toneIndex(b1)]!
+      out[o + 3] = 255
+    }
+    return
+  }
+
   for (let i = 0; i < r.length; i++) {
     const o = i * 4
     // Combined rolloff + sRGB + camera-Standard curve via LUT.
-    out[o] = RAW_TONE_LUT[toneIndex(r[i]! * gainR)]!
-    out[o + 1] = RAW_TONE_LUT[toneIndex(g[i]! * gainG)]!
-    out[o + 2] = RAW_TONE_LUT[toneIndex(b[i]! * gainB)]!
+    out[o] = RAW_TONE_LUT[toneIndex(r[i]! * gain * wb.r)]!
+    out[o + 1] = RAW_TONE_LUT[toneIndex(g[i]! * gain * wb.g)]!
+    out[o + 2] = RAW_TONE_LUT[toneIndex(b[i]! * gain * wb.b)]!
     out[o + 3] = 255
   }
 }
@@ -265,10 +346,12 @@ const PREVIEW_EDGE = 1024
 class LinearRgbBase implements DecodedBase {
   readonly width: number
   readonly height: number
+  private readonly camMatrix: number[][] | null
 
   constructor(private readonly full: DecodedRaw, private readonly preview: DecodedRaw) {
     this.width = full.width
     this.height = full.height
+    this.camMatrix = full.camMatrix ?? null
   }
 
   async render(crop: NormalizedCrop | null, size: Size, adjustments: Adjustments): Promise<RenderedResult> {
@@ -287,7 +370,7 @@ class LinearRgbBase implements DecodedBase {
     const b = downscaleCrop(src.b, src.width, src.height, rect, size.width, size.height)
 
     const imageData = new ImageData(size.width, size.height)
-    applyLinearTransform(r, g, b, ev, adjustments, imageData.data)
+    applyLinearTransform(r, g, b, ev, adjustments, imageData.data, this.camMatrix)
 
     const canvas = new OffscreenCanvas(size.width, size.height)
     const ctx = canvas.getContext('2d')!

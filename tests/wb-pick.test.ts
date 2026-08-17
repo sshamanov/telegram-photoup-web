@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { wbFromPick, cameraCurveByte } from '../src/lib/image/process'
+import { wbFromPick, cameraCurveByte, invert3x3, wbTransform3x3 } from '../src/lib/image/process'
+
+function matVec(m: number[][], v: number[]): number[] {
+  return [
+    m[0]![0]! * v[0]! + m[0]![1]! * v[1]! + m[0]![2]! * v[2]!,
+    m[1]![0]! * v[0]! + m[1]![1]! * v[1]! + m[1]![2]! * v[2]!,
+    m[2]![0]! * v[0]! + m[2]![1]! * v[1]! + m[2]![2]! * v[2]!,
+  ]
+}
 
 describe('wbFromPick', () => {
   it('a neutral pixel maps to a neutral offset and hue', () => {
@@ -23,6 +31,54 @@ describe('wbFromPick', () => {
     expect(r.offset).toBeLessThanOrEqual(2)
     expect(r.hue).toBeGreaterThanOrEqual(-2)
     expect(r.hue).toBeLessThanOrEqual(2)
+  })
+})
+
+describe('preview WB transform matches the pre-matrix export', () => {
+  // A plausible camera→sRGB matrix (row-major).
+  const M = [
+    [2.24, -0.93, -0.31],
+    [-0.72, 1.68, 0.04],
+    [-0.08, -0.24, 1.32],
+  ]
+  const camMul = [2.06, 1, 1.39]
+  const camRGB = [0.4, 0.3, 0.2]
+  const wb = { r: 1.414, g: 0.9, b: 0.707 } // warm-ish + hue
+
+  it('T·(M·diag(camMul)) == M·diag(camMul·wb) for the same sensor pixel', () => {
+    const Minv = invert3x3(M)
+    expect(Minv.length).toBe(3)
+
+    // Export: WB baked pre-matrix → M·diag(camMul·wb)·camRGB
+    const exportVec = matVec(M, [
+      camMul[0]! * wb.r * camRGB[0]!,
+      camMul[1]! * wb.g * camRGB[1]!,
+      camMul[2]! * wb.b * camRGB[2]!,
+    ])
+
+    // Preview: camera WB baked, then T = M·diag(wb)·M⁻¹
+    const base = matVec(M, [camMul[0]! * camRGB[0]!, camMul[1]! * camRGB[1]!, camMul[2]! * camRGB[2]!])
+    const t = wbTransform3x3(M, Minv, wb)
+    expect(t).not.toBeNull()
+    const previewVec = [
+      t![0]! * base[0]! + t![1]! * base[1]! + t![2]! * base[2]!,
+      t![3]! * base[0]! + t![4]! * base[1]! + t![5]! * base[2]!,
+      t![6]! * base[0]! + t![7]! * base[1]! + t![8]! * base[2]!,
+    ]
+
+    expect(previewVec[0]).toBeCloseTo(exportVec[0]!, 4)
+    expect(previewVec[1]).toBeCloseTo(exportVec[1]!, 4)
+    expect(previewVec[2]).toBeCloseTo(exportVec[2]!, 4)
+  })
+
+  it('is identity when the WB gains are neutral', () => {
+    const Minv = invert3x3(M)
+    const t = wbTransform3x3(M, Minv, { r: 1, g: 1, b: 1 })!
+    const v = [0.5, 0.4, 0.3]
+    const out = [t[0]! * v[0]! + t[1]! * v[1]! + t[2]! * v[2]!, t[3]! * v[0]! + t[4]! * v[1]! + t[5]! * v[2]!, t[6]! * v[0]! + t[7]! * v[1]! + t[8]! * v[2]!]
+    expect(out[0]).toBeCloseTo(v[0]!, 4)
+    expect(out[1]).toBeCloseTo(v[1]!, 4)
+    expect(out[2]).toBeCloseTo(v[2]!, 4)
   })
 
   it('a strongly warm pixel maps to an offset beyond -1 (previously clipped)', () => {

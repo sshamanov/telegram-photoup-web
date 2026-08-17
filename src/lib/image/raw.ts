@@ -11,6 +11,8 @@ export interface DecodedRaw {
   exif?: ExifInfo | null
   /** Camera as-shot WB multipliers (R, G, B, G2) — used to build export WB. */
   camMul?: number[] | null
+  /** Camera→sRGB color matrix — used to make the preview WB match the export. */
+  camMatrix?: number[][] | null
 }
 
 // 16-bit sRGB -> linear. 8-bit values are scaled up by 257 to reuse the same LUT.
@@ -78,6 +80,7 @@ export async function decodeRaw(
 
     let exif: ExifInfo | null = null
     let camMul: number[] | null = null
+    let camMatrix: number[][] | null = null
     try {
       const meta = await raw.metadata(true)
       const make = fileCam.make || meta?.camera_make || undefined
@@ -95,12 +98,13 @@ export async function decodeRaw(
           dateTaken: meta.timestamp ? meta.timestamp.toISOString().slice(0, 16).replace('T', ' ') : undefined,
         }
         camMul = meta.color_data?.cam_mul ?? null
+        camMatrix = meta.color_data?.rgb_cam ?? null
       }
     } catch {
       exif = null
     }
 
-    return { ...planar, exif, camMul }
+    return { ...planar, exif, camMul, camMatrix }
   } finally {
     raw.dispose()
   }

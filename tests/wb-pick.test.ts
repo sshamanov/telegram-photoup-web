@@ -19,10 +19,15 @@ describe('wbFromPick', () => {
 
   it('clamps offset and hue to the slider range', () => {
     const r = wbFromPick(255, 60, 40)
-    expect(r.offset).toBeGreaterThanOrEqual(-1)
-    expect(r.offset).toBeLessThanOrEqual(1)
-    expect(r.hue).toBeGreaterThanOrEqual(-1)
-    expect(r.hue).toBeLessThanOrEqual(1)
+    expect(r.offset).toBeGreaterThanOrEqual(-2)
+    expect(r.offset).toBeLessThanOrEqual(2)
+    expect(r.hue).toBeGreaterThanOrEqual(-2)
+    expect(r.hue).toBeLessThanOrEqual(2)
+  })
+
+  it('a strongly warm pixel maps to an offset beyond -1 (previously clipped)', () => {
+    const r = wbFromPick(200, 100, 50)
+    expect(r.offset).toBeLessThan(-1)
   })
 })
 

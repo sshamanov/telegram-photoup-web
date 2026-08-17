@@ -82,11 +82,11 @@ function gainCoefficients(ev: number, adjustments: Adjustments): { r: number; g:
 export function wbFromPick(r: number, g: number, b: number): { offset: number; hue: number } {
   const gray = (r + g + b) / 3
   const hueG = gray / Math.max(g, 1)
-  const hue = clamp(-2 * Math.log2(hueG) || 0, -1, 1)
+  const hue = clamp(-2 * Math.log2(hueG) || 0, -2, 2)
   const hueRB = Math.pow(2, hue * 0.25)
   const tempR = gray / (Math.max(r, 1) * hueRB)
   // tempR = 2^(offset*0.5) → offset = 2*log2(tempR)
-  return { offset: clamp(2 * Math.log2(tempR), -1, 1), hue }
+  return { offset: clamp(2 * Math.log2(tempR), -2, 2), hue }
 }
 
 /**

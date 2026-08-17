@@ -401,8 +401,8 @@
 
         <span class="section">White balance</span>
         <Slider
-          min={-1}
-          max={1}
+          min={-2}
+          max={2}
           step={0.05}
           value={photo.adjustments.wbOffset}
           zero={0}
@@ -410,8 +410,8 @@
           onChange={(v) => updateAdjustments(photo.id, { wbOffset: v })}
         />
         <Slider
-          min={-1}
-          max={1}
+          min={-2}
+          max={2}
           step={0.05}
           value={photo.adjustments.hue}
           zero={0}

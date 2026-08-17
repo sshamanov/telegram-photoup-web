@@ -308,11 +308,12 @@
     if (!ctx) return
     ctx.drawImage(img, 0, 0)
 
-    // Average a 3×3 neighborhood so a single hot/dead pixel can't skew the WB.
-    const size = 3
+    // Average a region (~3% of the image, clamped) so noise and mixed pixels don't
+    // skew the WB — a single pixel is far too sensitive.
+    const size = clamp(Math.round(Math.max(canvas.width, canvas.height) * 0.03), 5, 64)
     const half = Math.floor(size / 2)
-    const sx = clamp(Math.floor(x * canvas.width) - half, 0, canvas.width - size)
-    const sy = clamp(Math.floor(y * canvas.height) - half, 0, canvas.height - size)
+    const sx = clamp(Math.floor(x * canvas.width) - half, 0, Math.max(0, canvas.width - size))
+    const sy = clamp(Math.floor(y * canvas.height) - half, 0, Math.max(0, canvas.height - size))
     const px = ctx.getImageData(sx, sy, size, size).data
     let sr = 0
     let sg = 0

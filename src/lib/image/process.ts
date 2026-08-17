@@ -92,7 +92,8 @@ export function wbFromPick(r: number, g: number, b: number): { offset: number; h
 /**
  * Effective WB multipliers for the final export: the camera as-shot WB (camMul)
  * scaled by the user's warmth offset + hue. Passed to libraw's userMul so the
- * final WB is baked at decode (the export re-decodes anyway).
+ * final WB is applied BEFORE the camera color matrix (the colorimetrically
+ * correct order), giving the exported photo the proper WB.
  */
 export function exportWbMul(camMul: number[], adjustments: Adjustments): [number, number, number, number] {
   const rc = camMul[0] ?? 1

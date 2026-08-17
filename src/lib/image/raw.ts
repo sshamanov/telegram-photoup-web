@@ -60,7 +60,7 @@ export async function decodeRaw(
     // Parse the file's own EXIF Make/Model BEFORE libraw open() detaches the buffer.
     const fileCam = extractRawCamera(buffer)
     await raw.open(new Uint8Array(buffer), {
-      // A custom WB (userMul) overrides the camera WB; otherwise use the as-shot WB.
+      // A custom WB (userMul) overrides the camera WB and is applied pre-matrix.
       useCameraWb: opts.userMul ? false : true,
       userMul: opts.userMul ?? undefined,
       useCameraMatrix: 1, // use the camera's color matrix when WB is set (richer color)

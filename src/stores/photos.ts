@@ -268,9 +268,10 @@ export async function renderExports(
     let disposable = false
     let exportAdj = item.adjustments
     if (item.sourceType === 'raw') {
-      // The cached half-size base is used unless the crop is too small to fill
-      // 2560px (then decode full-size). The final WB is baked at decode via
-      // libraw userMul so the export render applies no extra WB.
+      // Use the cached half-size base unless the crop is too small to fill 2560px
+      // (then decode full-size). The final WB is baked at decode via libraw
+      // userMul — applied to the native sensor data, pre color matrix — and the
+      // export render then applies no extra WB.
       base = await ensureBase(id)
       const cropSize = cropRect(base.width, base.height, item.adjustments.crop)
       const needFull = Math.max(cropSize.width, cropSize.height) < 2560

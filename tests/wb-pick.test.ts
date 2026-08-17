@@ -2,32 +2,27 @@ import { describe, expect, it } from 'vitest'
 import { wbFromPick, cameraCurveByte } from '../src/lib/image/process'
 
 describe('wbFromPick', () => {
-  it('a neutral pixel maps to neutral sliders', () => {
-    expect(wbFromPick(128, 128, 128, true)).toEqual({ temp: 5500, hue: 0 })
-    expect(wbFromPick(128, 128, 128, false)).toEqual({ temp: 0, hue: 0 })
+  it('a neutral pixel maps to a neutral offset and hue', () => {
+    expect(wbFromPick(128, 128, 128)).toEqual({ offset: 0, hue: 0 })
   })
 
-  it('a warm pixel (r ≫ b) cools down the temperature', () => {
-    const raw = wbFromPick(200, 100, 50, true)
-    expect(raw.temp).toBeGreaterThan(5500) // cooler
-    expect(raw.hue).toBeLessThan(0) // boost the low green channel
-
-    const jpeg = wbFromPick(200, 100, 50, false)
-    expect(jpeg.temp).toBeLessThan(0) // negative offset = cool
+  it('a warm pixel (r ≫ b) maps to a cool (negative) offset and green hue', () => {
+    const r = wbFromPick(200, 100, 50)
+    expect(r.offset).toBeLessThan(0) // cool to neutralize the warm pixel
+    expect(r.hue).toBeLessThan(0) // boost the low green channel
   })
 
   it('too much green maps to a magenta (positive) hue to neutralize it', () => {
-    const { hue } = wbFromPick(100, 200, 100, false)
+    const { hue } = wbFromPick(100, 200, 100)
     expect(hue).toBeGreaterThan(0)
   })
 
-  it('clamps temperature to the slider range', () => {
-    const raw = wbFromPick(255, 60, 40, true)
-    expect(raw.temp).toBeGreaterThanOrEqual(2500)
-    expect(raw.temp).toBeLessThanOrEqual(10000)
-    const jpeg = wbFromPick(255, 60, 40, false)
-    expect(jpeg.temp).toBeGreaterThanOrEqual(-1)
-    expect(jpeg.temp).toBeLessThanOrEqual(1)
+  it('clamps offset and hue to the slider range', () => {
+    const r = wbFromPick(255, 60, 40)
+    expect(r.offset).toBeGreaterThanOrEqual(-1)
+    expect(r.offset).toBeLessThanOrEqual(1)
+    expect(r.hue).toBeGreaterThanOrEqual(-1)
+    expect(r.hue).toBeLessThanOrEqual(1)
   })
 })
 

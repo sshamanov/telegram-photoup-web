@@ -66,22 +66,12 @@ function toneIndex(v: number): number {
   return clamp(v * 32767.5, 0, 65535) | 0
 }
 
-function gainCoefficients(
-  ev: number,
-  adjustments: Adjustments,
-  raw: boolean,
-  cameraTemp = 5500,
-): { r: number; g: number; b: number } {
+function gainCoefficients(ev: number, adjustments: Adjustments): { r: number; g: number; b: number } {
   const gain = Math.pow(2, ev)
-  // RAW: the temperature is an absolute Kelvin target; the camera's as-shot WB is
-  // the neutral baseline (identity at that value). JPEG: a relative offset around 0.
-  const base = raw ? cameraTemp : 5500
-  const tempR = raw
-    ? Math.pow(base / adjustments.temperature, 0.6)
-    : Math.pow(2, adjustments.wbOffset * 0.5)
-  const tempB = raw
-    ? Math.pow(adjustments.temperature / base, 0.6)
-    : Math.pow(2, -adjustments.wbOffset * 0.5)
+  // Relative warmth offset: 0 = no change (the source's default WB is already
+  // baked at decode for both RAW and JPEG). + = warmer (more R, less B).
+  const tempR = Math.pow(2, adjustments.wbOffset * 0.5)
+  const tempB = Math.pow(2, -adjustments.wbOffset * 0.5)
   // Hue: green↔magenta axis. +1 = magenta (more R/B, less G); -1 = green.
   const hueG = Math.pow(2, -adjustments.hue * 0.5)
   const hueRB = Math.pow(2, adjustments.hue * 0.25)
@@ -89,22 +79,39 @@ function gainCoefficients(
 }
 
 /** Map a picked grey pixel onto the temperature + hue sliders (Lightroom-style). */
-export function wbFromPick(r: number, g: number, b: number, raw: boolean, cameraTemp = 5500): { temp: number; hue: number } {
+export function wbFromPick(r: number, g: number, b: number): { offset: number; hue: number } {
   const gray = (r + g + b) / 3
   const hueG = gray / Math.max(g, 1)
   const hue = clamp(-2 * Math.log2(hueG) || 0, -1, 1)
   const hueRB = Math.pow(2, hue * 0.25)
   const tempR = gray / (Math.max(r, 1) * hueRB)
-  if (raw) {
-    // tempR = (base/temp)^0.6  →  temp = base / tempR^(1/0.6)
-    return { temp: clamp(cameraTemp / Math.pow(tempR, 1 / 0.6), 2500, 10000), hue }
-  }
   // tempR = 2^(offset*0.5) → offset = 2*log2(tempR)
-  return { temp: clamp(2 * Math.log2(tempR), -1, 1), hue }
+  return { offset: clamp(2 * Math.log2(tempR), -1, 1), hue }
+}
+
+/**
+ * Effective WB multipliers for the final export: the camera as-shot WB (camMul)
+ * scaled by the user's warmth offset + hue. Passed to libraw's userMul so the
+ * final WB is baked at decode (the export re-decodes anyway).
+ */
+export function exportWbMul(camMul: number[], adjustments: Adjustments): [number, number, number, number] {
+  const rc = camMul[0] ?? 1
+  const gc = camMul[1] ?? 1
+  const bc = camMul[2] ?? 1
+  const g2c = camMul[3] ?? gc
+  const tempR = Math.pow(2, adjustments.wbOffset * 0.5)
+  const tempB = Math.pow(2, -adjustments.wbOffset * 0.5)
+  const hueG = Math.pow(2, -adjustments.hue * 0.5)
+  const hueRB = Math.pow(2, adjustments.hue * 0.25)
+  const r = rc * tempR * hueRB
+  const g = gc * hueG
+  const b = bc * tempB * hueRB
+  const g2 = g2c * hueG
+  return [r / g, 1, b / g, g2 / g]
 }
 
 function applyPixelTransform(data: Uint8ClampedArray, ev: number, adjustments: Adjustments): void {
-  const { r: gainR, g: gainG, b: gainB } = gainCoefficients(ev, adjustments, false)
+  const { r: gainR, g: gainG, b: gainB } = gainCoefficients(ev, adjustments)
   for (let i = 0; i < data.length; i += 4) {
     const r = SRGB_TO_LINEAR[data[i]!]!
     const g = SRGB_TO_LINEAR[data[i + 1]!]!
@@ -122,9 +129,8 @@ function applyLinearTransform(
   ev: number,
   adjustments: Adjustments,
   out: Uint8ClampedArray,
-  cameraTemp = 5500,
 ): void {
-  const { r: gainR, g: gainG, b: gainB } = gainCoefficients(ev, adjustments, true, cameraTemp)
+  const { r: gainR, g: gainG, b: gainB } = gainCoefficients(ev, adjustments)
   for (let i = 0; i < r.length; i++) {
     const o = i * 4
     // Combined rolloff + sRGB + camera-Standard curve via LUT.
@@ -258,12 +264,10 @@ const PREVIEW_EDGE = 1024
 class LinearRgbBase implements DecodedBase {
   readonly width: number
   readonly height: number
-  readonly cameraTemp: number
 
   constructor(private readonly full: DecodedRaw, private readonly preview: DecodedRaw) {
     this.width = full.width
     this.height = full.height
-    this.cameraTemp = full.cameraTemp ?? 5500
   }
 
   async render(crop: NormalizedCrop | null, size: Size, adjustments: Adjustments): Promise<RenderedResult> {
@@ -282,7 +286,7 @@ class LinearRgbBase implements DecodedBase {
     const b = downscaleCrop(src.b, src.width, src.height, rect, size.width, size.height)
 
     const imageData = new ImageData(size.width, size.height)
-    applyLinearTransform(r, g, b, ev, adjustments, imageData.data, this.cameraTemp)
+    applyLinearTransform(r, g, b, ev, adjustments, imageData.data)
 
     const canvas = new OffscreenCanvas(size.width, size.height)
     const ctx = canvas.getContext('2d')!
@@ -325,21 +329,21 @@ function makePreview(full: DecodedRaw): DecodedRaw {
 export async function decodeBase(
   buffer: ArrayBuffer,
   sourceType: SourceType,
-  opts: { fullSize?: boolean } = {},
-): Promise<{ base: DecodedBase; exif: ExifInfo | null; cameraTemp: number | null }> {
+  opts: { fullSize?: boolean; userMul?: [number, number, number, number] | null } = {},
+): Promise<{ base: DecodedBase; exif: ExifInfo | null; camMul: number[] | null }> {
   if (sourceType === 'raw') {
-    const decoded = await decodeRaw(buffer, opts.fullSize)
+    const decoded = await decodeRaw(buffer, { fullSize: opts.fullSize, userMul: opts.userMul })
     // Full-size export bases skip the small preview (we only render from the full).
     const preview = opts.fullSize ? decoded : makePreview(decoded)
     return {
       base: new LinearRgbBase(decoded, preview),
       exif: decoded.exif ?? null,
-      cameraTemp: decoded.cameraTemp ?? null,
+      camMul: decoded.camMul ?? null,
     }
   }
 
   const bitmap = await createImageBitmap(new Blob([buffer]))
-  return { base: new CanvasBase(bitmap, bitmap.width, bitmap.height, true), exif: extractJpegExif(buffer), cameraTemp: null }
+  return { base: new CanvasBase(bitmap, bitmap.width, bitmap.height, true), exif: extractJpegExif(buffer), camMul: null }
 }
 
 export async function renderThumb(

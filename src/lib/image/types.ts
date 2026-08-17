@@ -31,20 +31,17 @@ export type ExposureMode = 'auto' | 'manual'
 export interface Adjustments {
   exposureMode: ExposureMode
   exposureEV: number
-  /** RAW-only: color temperature in Kelvin (2500..10000, neutral 5500). */
-  temperature: number
-  /** JPEG-only: relative warmth (-1..+1, 0 = no change). No Kelvin reference on JPEG. */
+  /** Relative warmth offset (-1..+1, 0 = camera as-shot for RAW / no change for JPEG). */
   wbOffset: number
-  /** Hue (green↔magenta) tint, -1..+1, 0 = neutral. Both sources. */
+  /** Hue (green↔magenta) tint, -1..+1, 0 = neutral. */
   hue: number
   crop: NormalizedCrop | null
 }
 
-/** "Reset" baseline: 0 EV (manual), camera WB, no crop. */
+/** "Reset" baseline: 0 EV (manual), camera WB / no change, no crop. */
 export const neutralAdjustments: Adjustments = {
   exposureMode: 'manual',
   exposureEV: 0,
-  temperature: 5500,
   wbOffset: 0,
   hue: 0,
   crop: null,

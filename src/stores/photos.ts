@@ -8,6 +8,7 @@ import {
   renderThumb,
   renderExportCanvas,
   cropRect,
+  exportWbMul,
   type DecodedBase,
 } from '../lib/image/process'
 import { encodeJpeg444InWorker } from '../lib/image/encode'
@@ -30,7 +31,7 @@ export interface Photo {
   fullWidth: number
   fullHeight: number
   exif: ExifInfo | null
-  cameraTemp: number | null
+  camMul: number[] | null
   autoEV: number | null
   histogram: Uint32Array | null
   error: string | null
@@ -68,16 +69,9 @@ export async function ensureBase(id: string): Promise<DecodedBase> {
   if (!item) throw new Error('Photo not found')
   debugLog('decode', { id, type: item.sourceType })
   const buffer = await item.file.arrayBuffer()
-  const { base, exif, cameraTemp } = await decodeBase(buffer, item.sourceType)
+  const { base, exif, camMul } = await decodeBase(buffer, item.sourceType)
   if (exif && !item.exif) patchPhoto(id, { exif })
-  if (cameraTemp && !item.cameraTemp) {
-    // First decode of a RAW: adopt the camera's as-shot WB temperature.
-    const patch: Partial<Photo> = { cameraTemp }
-    if (item.sourceType === 'raw' && item.adjustments.temperature === 5500) {
-      patch.adjustments = { ...item.adjustments, temperature: cameraTemp }
-    }
-    patchPhoto(id, patch)
-  }
+  if (camMul && !item.camMul) patchPhoto(id, { camMul })
   bases.set(id, base)
   return base
 }
@@ -179,7 +173,7 @@ export function addPhotos(files: File[]): void {
     fullWidth: 0,
     fullHeight: 0,
     exif: null,
-    cameraTemp: null,
+    camMul: null,
     autoEV: null,
     histogram: null,
     error: null,
@@ -202,18 +196,7 @@ export function updateAdjustments(id: string, patch: Partial<Adjustments>): void
 
 export function resetAdjustments(id: string): void {
   photos.update((list) =>
-    list.map((p) =>
-      p.id === id
-        ? {
-            ...p,
-            adjustments: {
-              ...neutralAdjustments,
-              // RAW resets to the camera's as-shot WB temperature.
-              temperature: p.cameraTemp ?? neutralAdjustments.temperature,
-            },
-          }
-        : p,
-    ),
+    list.map((p) => (p.id === id ? { ...p, adjustments: { ...neutralAdjustments } } : p)),
   )
   enqueue(id)
 }
@@ -237,12 +220,22 @@ export async function renderExports(
     debugLog('export', { id, crop: item.adjustments.crop, mode: item.adjustments.exposureMode })
     let base: DecodedBase
     let disposable = false
+    let exportAdj = item.adjustments
     if (item.sourceType === 'raw') {
-      // Use the cached half-size base when the crop is large enough to still fill
-      // 2560px; otherwise decode full-size so the crop keeps real detail.
+      // The cached half-size base is used unless the crop is too small to fill
+      // 2560px (then decode full-size). The final WB is baked at decode via
+      // libraw userMul so the export render applies no extra WB.
       base = await ensureBase(id)
       const cropSize = cropRect(base.width, base.height, item.adjustments.crop)
-      if (Math.max(cropSize.width, cropSize.height) < 2560) {
+      const needFull = Math.max(cropSize.width, cropSize.height) < 2560
+      const userMul = item.camMul ? exportWbMul(item.camMul, item.adjustments) : null
+      if (userMul) {
+        const buffer = await item.file.arrayBuffer()
+        const eff = await decodeBase(buffer, 'raw', { fullSize: needFull, userMul })
+        base = eff.base
+        disposable = true
+        exportAdj = { ...item.adjustments, wbOffset: 0, hue: 0 }
+      } else if (needFull) {
         const buffer = await item.file.arrayBuffer()
         const full = await decodeBase(buffer, 'raw', { fullSize: true })
         base = full.base
@@ -251,7 +244,7 @@ export async function renderExports(
     } else {
       base = await ensureBase(id)
     }
-    const canvas = await renderExportCanvas(base, item.adjustments)
+    const canvas = await renderExportCanvas(base, exportAdj)
     if (disposable) base.dispose()
     debugLog('export:canvas', { file: toJpgName(item.name), w: canvas.width, h: canvas.height })
     rendered.push({ canvas, fileName: toJpgName(item.name) })

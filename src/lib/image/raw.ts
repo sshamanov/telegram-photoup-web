@@ -1,6 +1,5 @@
 import LibRaw from 'libraw-wasm/dist/index.js'
 import { extractRawCamera, formatCamera, type ExifInfo } from './exif'
-import { clamp } from './math'
 
 /** Camera-WB, sRGB-primaries, LINEAR (gamma-decoded) planar RGB at the decoded resolution. */
 export interface DecodedRaw {
@@ -10,8 +9,8 @@ export interface DecodedRaw {
   g: Float32Array
   b: Float32Array
   exif?: ExifInfo | null
-  /** Approximate camera as-shot WB temperature (Kelvin) from cam_mul. */
-  cameraTemp?: number | null
+  /** Camera as-shot WB multipliers (R, G, B, G2) — used to build export WB. */
+  camMul?: number[] | null
 }
 
 // 16-bit sRGB -> linear. 8-bit values are scaled up by 257 to reuse the same LUT.
@@ -52,20 +51,25 @@ function toLinearPlanar(data: Uint8Array | Uint16Array, width: number, height: n
  * primaries). 16-bit output preserves highlight headroom; the sRGB gamma is
  * decoded here so the downstream pipeline works in linear light.
  */
-export async function decodeRaw(buffer: ArrayBuffer, fullSize = false): Promise<DecodedRaw> {
+export async function decodeRaw(
+  buffer: ArrayBuffer,
+  opts: { fullSize?: boolean; userMul?: [number, number, number, number] | null } = {},
+): Promise<DecodedRaw> {
   const raw = new LibRaw()
   try {
     // Parse the file's own EXIF Make/Model BEFORE libraw open() detaches the buffer.
     const fileCam = extractRawCamera(buffer)
     await raw.open(new Uint8Array(buffer), {
-      useCameraWb: true,
+      // A custom WB (userMul) overrides the camera WB; otherwise use the as-shot WB.
+      useCameraWb: opts.userMul ? false : true,
+      userMul: opts.userMul ?? undefined,
       useCameraMatrix: 1, // use the camera's color matrix when WB is set (richer color)
       outputColor: 1, // sRGB primaries + gamma
       outputBps: 16,
       noAutoBright: true,
       // Half-size keeps interactive memory bounded; full-size is used for exports
       // so crops can still output up to 2560px of real detail.
-      halfSize: !fullSize,
+      halfSize: !opts.fullSize,
       userQual: 3,
     })
     const image = await raw.imageData()
@@ -73,7 +77,7 @@ export async function decodeRaw(buffer: ArrayBuffer, fullSize = false): Promise<
     const planar = toLinearPlanar(image.data, image.width, image.height, image.bits)
 
     let exif: ExifInfo | null = null
-    let cameraTemp: number | null = null
+    let camMul: number[] | null = null
     try {
       const meta = await raw.metadata(true)
       const make = fileCam.make || meta?.camera_make || undefined
@@ -90,19 +94,13 @@ export async function decodeRaw(buffer: ArrayBuffer, fullSize = false): Promise<
           iso: meta.iso_speed || undefined,
           dateTaken: meta.timestamp ? meta.timestamp.toISOString().slice(0, 16).replace('T', ' ') : undefined,
         }
-        // Approximate the camera's as-shot WB as a color temperature from the
-        // recorded multipliers (cam_mul). Ratio 1 ≈ 5500K daylight.
-        const camMul = meta.color_data?.cam_mul
-        if (camMul && camMul[0] && camMul[2]) {
-          const ratio = camMul[0] / camMul[2]
-          cameraTemp = clamp(5500 * Math.pow(ratio, 0.55), 2500, 10000)
-        }
+        camMul = meta.color_data?.cam_mul ?? null
       }
     } catch {
       exif = null
     }
 
-    return { ...planar, exif, cameraTemp }
+    return { ...planar, exif, camMul }
   } finally {
     raw.dispose()
   }

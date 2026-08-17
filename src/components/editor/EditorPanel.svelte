@@ -43,13 +43,10 @@
   $: exifAperture = photo.exif?.aperture ? `f/${photo.exif.aperture.toFixed(1)}` : null
   $: exifIso = photo.exif?.iso ? `ISO ${photo.exif.iso}` : null
   $: exifDate = photo.exif?.dateTaken ? formatDate(photo.exif.dateTaken) : null
-  // Current temperature (RAW, Kelvin) or warmth correction (JPEG, signed offset),
-  // plus the hue (green↔magenta) tint.
-  $: tempLabel = isRaw
-    ? `${Math.round(photo.adjustments.temperature)}K`
-    : `${photo.adjustments.wbOffset > 0 ? '+' : ''}${photo.adjustments.wbOffset.toFixed(2)}`
+  // Warmth offset (0 = camera as-shot / no change) + hue (green↔magenta) tint.
+  $: wbLabel = `${photo.adjustments.wbOffset > 0 ? '+' : ''}${photo.adjustments.wbOffset.toFixed(2)}`
   $: hueLabel = `${photo.adjustments.hue > 0 ? '+' : ''}${photo.adjustments.hue.toFixed(2)}`
-  $: wbDisplay = `${tempLabel} · ${hueLabel}`
+  $: wbDisplay = `${wbLabel} · ${hueLabel}`
 
   // The letterboxed rect of the image *content* within the square stage (CSS px).
   $: contentRect = (() => {
@@ -110,7 +107,7 @@
   function resetWb(): void {
     updateAdjustments(
       photo.id,
-      isRaw ? { temperature: photo.cameraTemp ?? 5500, hue: 0 } : { wbOffset: 0, hue: 0 },
+      { wbOffset: 0, hue: 0 },
     )
   }
 
@@ -335,12 +332,9 @@
       pushToast('error', 'Pick a neutral area (not black or blown out)')
       return
     }
-    // Reflect the pick on the temperature + hue sliders (Lightroom-style).
-    const { temp, hue } = wbFromPick(r, g, b, isRaw, photo.cameraTemp ?? 5500)
-    updateAdjustments(
-      photo.id,
-      isRaw ? { temperature: temp, hue } : { wbOffset: temp, hue },
-    )
+    // Reflect the pick on the warmth + hue sliders (Lightroom-style).
+    const { offset, hue } = wbFromPick(r, g, b)
+    updateAdjustments(photo.id, { wbOffset: offset, hue })
     pickingNeutral = false
   }
 </script>
@@ -406,27 +400,15 @@
         </div>
 
         <span class="section">White balance</span>
-        {#if isRaw}
-          <Slider
-            min={2500}
-            max={10000}
-            step={50}
-            value={photo.adjustments.temperature}
-            zero={photo.cameraTemp ?? 5500}
-            zeroLabel={String(Math.round(photo.cameraTemp ?? 5500))}
-            onChange={(v) => updateAdjustments(photo.id, { temperature: v })}
-          />
-        {:else}
-          <Slider
-            min={-1}
-            max={1}
-            step={0.05}
-            value={photo.adjustments.wbOffset}
-            zero={0}
-            zeroLabel="0"
-            onChange={(v) => updateAdjustments(photo.id, { wbOffset: v })}
-          />
-        {/if}
+        <Slider
+          min={-1}
+          max={1}
+          step={0.05}
+          value={photo.adjustments.wbOffset}
+          zero={0}
+          zeroLabel="0"
+          onChange={(v) => updateAdjustments(photo.id, { wbOffset: v })}
+        />
         <Slider
           min={-1}
           max={1}

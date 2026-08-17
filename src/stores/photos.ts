@@ -238,12 +238,16 @@ export async function renderExports(
     let base: DecodedBase
     let disposable = false
     if (item.sourceType === 'raw') {
-      // Decode the RAW at full size for the export so a crop can still output up
-      // to 2560px of real detail; release it right after rendering.
-      const buffer = await item.file.arrayBuffer()
-      const full = await decodeBase(buffer, 'raw', { fullSize: true })
-      base = full.base
-      disposable = true
+      // Use the cached half-size base when the crop is large enough to still fill
+      // 2560px; otherwise decode full-size so the crop keeps real detail.
+      base = await ensureBase(id)
+      const cropSize = cropRect(base.width, base.height, item.adjustments.crop)
+      if (Math.max(cropSize.width, cropSize.height) < 2560) {
+        const buffer = await item.file.arrayBuffer()
+        const full = await decodeBase(buffer, 'raw', { fullSize: true })
+        base = full.base
+        disposable = true
+      }
     } else {
       base = await ensureBase(id)
     }

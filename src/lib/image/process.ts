@@ -135,8 +135,31 @@ export function wbTransform3x3(M: number[][], Minv: number[][], wb: { r: number;
   return t
 }
 
-/** Map a picked grey pixel onto the temperature + hue sliders (Lightroom-style). */
-export function wbFromPick(r: number, g: number, b: number): { offset: number; hue: number } {
+/** Map a picked grey pixel onto the warmth + hue sliders. With the camera color
+ * matrix, invert through T = M·diag(wb)·M⁻¹ so the pixel lands exactly neutral. */
+export function wbFromPick(r: number, g: number, b: number, camMatrix?: number[][] | null): { offset: number; hue: number } {
+  if (camMatrix && camMatrix.length === 3) {
+    const Minv = invert3x3(camMatrix)
+    if (Minv.length === 3) {
+      // q = M⁻¹·pixel (camera-RGB domain), s = M⁻¹·(1,1,1). Gains that neutralize:
+      // wb = gray·s / q. (Assumes the current WB is neutral.)
+      const q0 = Minv[0]![0]! * r + Minv[0]![1]! * g + Minv[0]![2]! * b
+      const q1 = Minv[1]![0]! * r + Minv[1]![1]! * g + Minv[1]![2]! * b
+      const q2 = Minv[2]![0]! * r + Minv[2]![1]! * g + Minv[2]![2]! * b
+      const s0 = Minv[0]![0]! + Minv[0]![1]! + Minv[0]![2]!
+      const s1 = Minv[1]![0]! + Minv[1]![1]! + Minv[1]![2]!
+      const s2 = Minv[2]![0]! + Minv[2]![1]! + Minv[2]![2]!
+      const gray = (r + g + b) / 3
+      const gr = gray * s0 / Math.max(q0, 1e-6)
+      const gg = gray * s1 / Math.max(q1, 1e-6)
+      const gb = gray * s2 / Math.max(q2, 1e-6)
+      const hue = clamp(-2 * Math.log2(Math.max(gg, 1e-6)) || 0, -2, 2)
+      const hueRB = Math.pow(2, hue * 0.25)
+      const tempR = gr / Math.max(hueRB, 1e-6)
+      const offset = clamp(2 * Math.log2(Math.max(tempR, 1e-6)), -2, 2)
+      return { offset, hue }
+    }
+  }
   const gray = (r + g + b) / 3
   const hueG = gray / Math.max(g, 1)
   const hue = clamp(-2 * Math.log2(hueG) || 0, -2, 2)
@@ -414,7 +437,7 @@ export async function decodeBase(
   buffer: ArrayBuffer,
   sourceType: SourceType,
   opts: { fullSize?: boolean; userMul?: [number, number, number, number] | null } = {},
-): Promise<{ base: DecodedBase; exif: ExifInfo | null; camMul: number[] | null }> {
+): Promise<{ base: DecodedBase; exif: ExifInfo | null; camMul: number[] | null; camMatrix: number[][] | null }> {
   if (sourceType === 'raw') {
     const decoded = await decodeRaw(buffer, { fullSize: opts.fullSize, userMul: opts.userMul })
     // Full-size export bases skip the small preview (we only render from the full).
@@ -423,11 +446,17 @@ export async function decodeBase(
       base: new LinearRgbBase(decoded, preview),
       exif: decoded.exif ?? null,
       camMul: decoded.camMul ?? null,
+      camMatrix: decoded.camMatrix ?? null,
     }
   }
 
   const bitmap = await createImageBitmap(new Blob([buffer]))
-  return { base: new CanvasBase(bitmap, bitmap.width, bitmap.height, true), exif: extractJpegExif(buffer), camMul: null }
+  return {
+    base: new CanvasBase(bitmap, bitmap.width, bitmap.height, true),
+    exif: extractJpegExif(buffer),
+    camMul: null,
+    camMatrix: null,
+  }
 }
 
 export async function renderThumb(

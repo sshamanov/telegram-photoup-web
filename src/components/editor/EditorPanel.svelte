@@ -349,7 +349,7 @@
       return
     }
     // Reflect the pick on the warmth + hue sliders (Lightroom-style).
-    const { offset, hue } = wbFromPick(r, g, b)
+    const { offset, hue } = wbFromPick(r, g, b, photo.camMatrix)
     updateAdjustments(photo.id, { wbOffset: offset, hue })
     pickingNeutral = false
   }

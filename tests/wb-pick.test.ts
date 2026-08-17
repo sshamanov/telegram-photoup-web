@@ -71,6 +71,38 @@ describe('preview WB transform matches the pre-matrix export', () => {
     expect(previewVec[2]).toBeCloseTo(exportVec[2]!, 4)
   })
 
+  it('a neutral pixel picks a neutral WB (offset 0, hue 0)', () => {
+    // Neutral scene in camera domain maps to a neutral output (white-point M).
+    const p = matVec(M, [0.5, 0.5, 0.5])
+    const { offset, hue } = wbFromPick(p[0]!, p[1]!, p[2]!, M)
+    expect(offset).toBeCloseTo(0, 2)
+    expect(hue).toBeCloseTo(0, 2)
+  })
+
+  it('a warm-cast pixel picks a correction that reduces the cast', () => {
+    const Minv = invert3x3(M)
+    // A warm output pixel (R > B).
+    const p = [0.62, 0.5, 0.4]
+    const spread = (v: number[]) => Math.max(...v) - Math.min(...v)
+    const before = spread(p)
+
+    const { offset, hue } = wbFromPick(p[0]!, p[1]!, p[2]!, M)
+    const tempR = Math.pow(2, offset * 0.5)
+    const tempB = Math.pow(2, -offset * 0.5)
+    const hueG = Math.pow(2, -hue * 0.5)
+    const hueRB = Math.pow(2, hue * 0.25)
+    const g = { r: tempR * hueRB, g: hueG, b: tempB * hueRB }
+    const t = wbTransform3x3(M, Minv, g)!
+    const out = [
+      t[0]! * p[0]! + t[1]! * p[1]! + t[2]! * p[2]!,
+      t[3]! * p[0]! + t[4]! * p[1]! + t[5]! * p[2]!,
+      t[6]! * p[0]! + t[7]! * p[1]! + t[8]! * p[2]!,
+    ]
+    // The 2-parameter WB model can't make it perfectly neutral, but it must reduce
+    // the channel spread (the cast).
+    expect(spread(out)).toBeLessThan(before)
+  })
+
   it('is identity when the WB gains are neutral', () => {
     const Minv = invert3x3(M)
     const t = wbTransform3x3(M, Minv, { r: 1, g: 1, b: 1 })!

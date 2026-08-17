@@ -32,6 +32,7 @@ export interface Photo {
   fullHeight: number
   exif: ExifInfo | null
   camMul: number[] | null
+  camMatrix: number[][] | null
   autoEV: number | null
   histogram: Uint32Array | null
   error: string | null
@@ -69,9 +70,10 @@ export async function ensureBase(id: string): Promise<DecodedBase> {
   if (!item) throw new Error('Photo not found')
   debugLog('decode', { id, type: item.sourceType })
   const buffer = await item.file.arrayBuffer()
-  const { base, exif, camMul } = await decodeBase(buffer, item.sourceType)
+  const { base, exif, camMul, camMatrix } = await decodeBase(buffer, item.sourceType)
   if (exif && !item.exif) patchPhoto(id, { exif })
   if (camMul && !item.camMul) patchPhoto(id, { camMul })
+  if (camMatrix && !item.camMatrix) patchPhoto(id, { camMatrix })
   bases.set(id, base)
   return base
 }
@@ -219,6 +221,7 @@ export function addPhotos(files: File[]): void {
     fullHeight: 0,
     exif: null,
     camMul: null,
+    camMatrix: null,
     autoEV: null,
     histogram: null,
     error: null,

@@ -161,17 +161,24 @@
     drag = { kind: 'resize', handle, startX: event.clientX, startY: event.clientY, startCrop: { ...draftCrop } }
   }
 
-  function resizeCrop(c: NormalizedCrop, handle: Handle, dx: number, dy: number, keepAspect: boolean): NormalizedCrop {
+  function resizeCrop(
+    c: NormalizedCrop,
+    handle: Handle,
+    dx: number,
+    dy: number,
+    shift: boolean,
+    alt: boolean,
+  ): NormalizedCrop {
     const isSide = handle === 'n' || handle === 's' || handle === 'e' || handle === 'w'
     const isHoriz = handle === 'e' || handle === 'w'
     const isVert = handle === 'n' || handle === 's'
 
-    // Edge handles scale from the center so both opposite edges move equally.
-    if (isSide) {
-      if (keepAspect) {
-        const sx = (handle === 'e' ? dx : handle === 'w' ? -dx : 0) / c.width
-        const sy = (handle === 's' ? dy : handle === 'n' ? -dy : 0) / c.height
-        const s = 1 + sx + sy
+    // ALT = scale from the center (both opposite edges move equally). Shift keeps aspect.
+    if (alt) {
+      if (shift) {
+        const sx = (handle.includes('e') ? dx : handle.includes('w') ? -dx : 0) / c.width
+        const sy = (handle.includes('s') ? dy : handle.includes('n') ? -dy : 0) / c.height
+        const s = 1 + (isSide ? sx + sy : Math.max(sx, sy))
         const maxS = Math.min(
           1 + (2 * c.x) / c.width,
           1 + (2 * (1 - c.x - c.width)) / c.width,
@@ -193,10 +200,41 @@
         const h = clamp(c.height + dy * 2, MIN_CROP, Math.max(MIN_CROP, maxH))
         return { x: c.x, y: c.y + (c.height - h) / 2, width: c.width, height: h }
       }
+      // ALT + corner: scale both axes from the center.
+      const maxW = Math.min(c.width + 2 * c.x, c.width + 2 * (1 - c.x - c.width))
+      const maxH = Math.min(c.height + 2 * c.y, c.height + 2 * (1 - c.y - c.height))
+      const w = clamp(c.width + dx * 2, MIN_CROP, Math.max(MIN_CROP, maxW))
+      const h = clamp(c.height + dy * 2, MIN_CROP, Math.max(MIN_CROP, maxH))
+      return { x: c.x + (c.width - w) / 2, y: c.y + (c.height - h) / 2, width: w, height: h }
     }
 
-    // Corners anchor the opposite corner.
-    if (keepAspect) {
+    // SHIFT keeps the aspect ratio.
+    if (shift) {
+      // Edge handles: the dragged side moves toward the static opposite side; the
+      // perpendicular edges move symmetrically to preserve the ratio.
+      if (isSide) {
+        if (isHoriz) {
+          let x = c.x
+          let w = c.width
+          if (handle === 'e') w = clamp(c.width + dx, MIN_CROP, 1 - c.x)
+          else {
+            x = clamp(c.x + dx, 0, c.x + c.width - MIN_CROP)
+            w = c.x + c.width - x
+          }
+          const h = c.height * (w / c.width)
+          return { x, y: c.y + (c.height - h) / 2, width: w, height: h }
+        }
+        let y = c.y
+        let h = c.height
+        if (handle === 's') h = clamp(c.height + dy, MIN_CROP, 1 - c.y)
+        else {
+          y = clamp(c.y + dy, 0, c.y + c.height - MIN_CROP)
+          h = c.y + c.height - y
+        }
+        const w = c.width * (h / c.height)
+        return { x: c.x + (c.width - w) / 2, y, width: w, height: h }
+      }
+      // Corner handles anchor the opposite corner.
       const sx = (handle.includes('e') ? dx : handle.includes('w') ? -dx : 0) / c.width
       const sy = (handle.includes('s') ? dy : handle.includes('n') ? -dy : 0) / c.height
       const s = 1 + Math.max(sx, sy)
@@ -213,6 +251,7 @@
       }
     }
 
+    // Default: the dragged side moves, the opposite side stays put.
     let x = c.x
     let y = c.y
     let width = c.width
@@ -246,7 +285,7 @@
       return
     }
 
-    draftCrop = resizeCrop(c, drag.handle, dx, dy, event.shiftKey)
+    draftCrop = resizeCrop(c, drag.handle, dx, dy, event.shiftKey, event.altKey)
   }
 
   function onWindowPointerUp(): void {

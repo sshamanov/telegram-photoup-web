@@ -96,11 +96,34 @@ test('Shift+drag on a side handle keeps the crop aspect ratio', async ({ page })
   await page.keyboard.up('Shift')
 
   const after = (await page.locator('.crop-box').boundingBox())!
-  // Without Shift the right edge alone would narrow just the width (aspect distorts);
-  // with Shift both dimensions shrink proportionally AND the box stays centered
-  // (both left and right / top and bottom edges move equally).
+  // With Shift the right edge moves toward the static LEFT side, and the top/bottom
+  // edges move symmetrically (vertical center preserved) to keep the aspect ratio.
   expect(after.width / after.height).toBeCloseTo(aspect, 1)
   expect(after.width).toBeLessThan(box.width)
+  expect(Math.abs(after.x - box.x)).toBeLessThan(2) // left side static
+  const cy = box.y + box.height / 2
+  expect(Math.abs(after.y + after.height / 2 - cy)).toBeLessThan(2) // vertical center kept
+})
+
+test('Alt+drag a corner scales the crop from the center', async ({ page }) => {
+  await login(page)
+  await openEditor(page)
+
+  const box = (await page.locator('.crop-box').boundingBox())!
+
+  // Drag the bottom-right corner inward with Alt held.
+  const hb = (await page.locator('.h-se').boundingBox())!
+  await page.keyboard.down('Alt')
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(hb.x + hb.width / 2 - box.width * 0.15, hb.y + hb.height / 2 - box.height * 0.15, { steps: 6 })
+  await page.mouse.up()
+  await page.keyboard.up('Alt')
+
+  const after = (await page.locator('.crop-box').boundingBox())!
+  // Center-scale: the box center stays put (both opposite edges move equally).
+  expect(after.width).toBeLessThan(box.width)
+  expect(after.height).toBeLessThan(box.height)
   const cx = box.x + box.width / 2
   const cy = box.y + box.height / 2
   expect(Math.abs(after.x + after.width / 2 - cx)).toBeLessThan(2)

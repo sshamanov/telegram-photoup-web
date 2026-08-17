@@ -141,9 +141,17 @@ async function refreshThumb(id: string, releaseAfter: boolean): Promise<void> {
   }
 }
 
-function enqueue(id: string, releaseAfter = false): void {
+/** The photo currently open in the editor — its re-renders jump the queue. */
+let focusedId: string | null = null
+
+export function setFocusedPhoto(id: string | null): void {
+  focusedId = id
+}
+
+function enqueue(id: string, releaseAfter = false, priority = false): void {
   if (queue.some((q) => q.id === id)) return
-  queue.push({ id, releaseAfter })
+  if (priority) queue.unshift({ id, releaseAfter })
+  else queue.push({ id, releaseAfter })
   void drain()
 }
 
@@ -191,14 +199,15 @@ export function updateAdjustments(id: string, patch: Partial<Adjustments>): void
   photos.update((list) =>
     list.map((p) => (p.id === id ? { ...p, adjustments: { ...p.adjustments, ...patch } } : p)),
   )
-  enqueue(id)
+  // The photo being edited re-renders with priority over the upload queue.
+  enqueue(id, false, id === focusedId)
 }
 
 export function resetAdjustments(id: string): void {
   photos.update((list) =>
     list.map((p) => (p.id === id ? { ...p, adjustments: { ...neutralAdjustments } } : p)),
   )
-  enqueue(id)
+  enqueue(id, false, id === focusedId)
 }
 
 /** Render the final ≤2560px export for each id. Decodes/transforms in order, then

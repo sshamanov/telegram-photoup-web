@@ -2,11 +2,12 @@ import { writable, get } from 'svelte/store'
 import type { Adjustments, ProcessStatus, SourceType } from '../lib/image/types'
 import type { ExifInfo } from '../lib/image/exif'
 import { neutralAdjustments } from '../lib/image/types'
+import { fitWithin } from '../lib/image/math'
 import {
   decodeBase,
   renderThumb,
   renderExportCanvas,
-  exportDimensions,
+  cropRect,
   type DecodedBase,
 } from '../lib/image/process'
 import { encodeJpeg444InWorker } from '../lib/image/encode'
@@ -111,7 +112,12 @@ async function refreshThumb(id: string, releaseAfter: boolean): Promise<void> {
       mode: latest.adjustments.exposureMode,
     })
 
-    const dims = exportDimensions(base, latest.adjustments)
+    // RAW exports render from the full-size decode, so the displayed output size
+    // uses ≈2× the half-size base (keeps crops at full detail).
+    const srcW = latest.sourceType === 'raw' ? base.width * 2 : base.width
+    const srcH = latest.sourceType === 'raw' ? base.height * 2 : base.height
+    const outRect = cropRect(srcW, srcH, latest.adjustments.crop)
+    const dims = fitWithin(outRect.width, outRect.height, 2560)
     const { blob, autoEV, histogram } = await renderThumb(base, latest.adjustments)
     // The full (uncropped) preview is the crop editor's working surface.
     const full = await renderThumb(base, { ...latest.adjustments, crop: null })
@@ -228,9 +234,22 @@ export async function renderExports(
     const item = get(photos).find((p) => p.id === id)
     if (!item) continue
     onProgress?.('render', done, total, item.name)
-    const base = await ensureBase(id)
     debugLog('export', { id, crop: item.adjustments.crop, mode: item.adjustments.exposureMode })
+    let base: DecodedBase
+    let disposable = false
+    if (item.sourceType === 'raw') {
+      // Decode the RAW at full size for the export so a crop can still output up
+      // to 2560px of real detail; release it right after rendering.
+      const buffer = await item.file.arrayBuffer()
+      const full = await decodeBase(buffer, 'raw', { fullSize: true })
+      base = full.base
+      disposable = true
+    } else {
+      base = await ensureBase(id)
+    }
     const canvas = await renderExportCanvas(base, item.adjustments)
+    if (disposable) base.dispose()
+    debugLog('export:canvas', { file: toJpgName(item.name), w: canvas.width, h: canvas.height })
     rendered.push({ canvas, fileName: toJpgName(item.name) })
     done++
     onProgress?.('render', done, total, item.name)

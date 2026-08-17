@@ -52,7 +52,7 @@ function toLinearPlanar(data: Uint8Array | Uint16Array, width: number, height: n
  * primaries). 16-bit output preserves highlight headroom; the sRGB gamma is
  * decoded here so the downstream pipeline works in linear light.
  */
-export async function decodeRaw(buffer: ArrayBuffer): Promise<DecodedRaw> {
+export async function decodeRaw(buffer: ArrayBuffer, fullSize = false): Promise<DecodedRaw> {
   const raw = new LibRaw()
   try {
     // Parse the file's own EXIF Make/Model BEFORE libraw open() detaches the buffer.
@@ -63,7 +63,9 @@ export async function decodeRaw(buffer: ArrayBuffer): Promise<DecodedRaw> {
       outputColor: 1, // sRGB primaries + gamma
       outputBps: 16,
       noAutoBright: true,
-      halfSize: true, // still ≥2560px for D810/4000D; keeps memory bounded
+      // Half-size keeps interactive memory bounded; full-size is used for exports
+      // so crops can still output up to 2560px of real detail.
+      halfSize: !fullSize,
       userQual: 3,
     })
     const image = await raw.imageData()

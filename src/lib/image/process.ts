@@ -325,11 +325,14 @@ function makePreview(full: DecodedRaw): DecodedRaw {
 export async function decodeBase(
   buffer: ArrayBuffer,
   sourceType: SourceType,
+  opts: { fullSize?: boolean } = {},
 ): Promise<{ base: DecodedBase; exif: ExifInfo | null; cameraTemp: number | null }> {
   if (sourceType === 'raw') {
-    const decoded = await decodeRaw(buffer)
+    const decoded = await decodeRaw(buffer, opts.fullSize)
+    // Full-size export bases skip the small preview (we only render from the full).
+    const preview = opts.fullSize ? decoded : makePreview(decoded)
     return {
-      base: new LinearRgbBase(decoded, makePreview(decoded)),
+      base: new LinearRgbBase(decoded, preview),
       exif: decoded.exif ?? null,
       cameraTemp: decoded.cameraTemp ?? null,
     }

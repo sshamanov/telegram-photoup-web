@@ -9,6 +9,7 @@
 
   export let photo: Photo
   export let onClose: () => void = () => {}
+  export let onReject: () => void = () => {}
   export let onPrev: () => void = () => {}
   export let onNext: () => void = () => {}
   export let hasPrev = false
@@ -549,7 +550,10 @@
           <button onclick={onNext} disabled={!hasNext}>Next ›</button>
         </div>
 
-        <button class="close" onclick={onClose}>Close</button>
+        <div class="bottom-buttons">
+          <button class="reject" onclick={onReject}>Reject</button>
+          <button class="close" onclick={onClose}>Close</button>
+        </div>
       </div>
     </div>
   </div>
@@ -737,6 +741,20 @@
   }
   .nav button:disabled {
     opacity: 0.35;
+  }
+  .bottom-buttons {
+    display: flex;
+    gap: 8px;
+  }
+  .bottom-buttons button {
+    flex: 1;
+  }
+  .reject {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+  .reject:not(:disabled):hover {
+    background: rgba(230, 72, 46, 0.12);
   }
   .close {
     width: 100%;

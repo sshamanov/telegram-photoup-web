@@ -249,6 +249,10 @@ export function toggleSelected(id: string): void {
   photos.update((list) => list.map((p) => (p.id === id ? { ...p, selected: !p.selected } : p)))
 }
 
+export function selectAll(selected: boolean): void {
+  photos.update((list) => list.map((p) => ({ ...p, selected })))
+}
+
 export function updateAdjustments(id: string, patch: Partial<Adjustments>): void {
   photos.update((list) =>
     list.map((p) => (p.id === id ? { ...p, adjustments: { ...p.adjustments, ...patch } } : p)),

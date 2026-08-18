@@ -1,6 +1,6 @@
 <script lang="ts">
   import { authState, getCurrentAdapter, logout } from './stores/telegram'
-  import { photos, clearPhotos, removePhotos, renderExports, ensureBase, setFocusedPhoto, closePhoto } from './stores/photos'
+  import { photos, clearPhotos, removePhotos, renderExports, ensureBase, setFocusedPhoto, closePhoto, selectAll } from './stores/photos'
   import { settings } from './stores/settings'
   import { pushToast } from './stores/ui'
   import AuthScreen from './components/auth/AuthScreen.svelte'
@@ -30,6 +30,7 @@
   $: editingIndex = $photos.findIndex((p) => p.id === editingId)
   $: canPrev = editingIndex > 0
   $: canNext = editingIndex >= 0 && editingIndex < $photos.length - 1
+  $: allSelected = $photos.length > 0 && $photos.every((p) => p.selected)
 
   function openEditor(id: string): void {
     editingId = id
@@ -41,6 +42,27 @@
     const id = editingId
     editingId = null
     if (id) closePhoto(id)
+  }
+
+  function rejectCurrent(): void {
+    const id = editingId
+    if (!id) return
+    setFocusedPhoto(null)
+    editingId = null
+    removePhotos([id])
+  }
+
+  function onKeyDown(event: KeyboardEvent): void {
+    const t = event.target as HTMLElement | null
+    const tag = t?.tagName ?? ''
+    // Only let text-entry fields handle Ctrl+A (select-all-text); checkboxes/buttons
+    // must still trigger the grid select-all.
+    const isTextInput = tag === 'INPUT' && ['text', 'tel', 'number', 'password', 'email', 'search', 'url'].includes((t as HTMLInputElement).type)
+    if (tag === 'TEXTAREA' || tag === 'SELECT' || isTextInput || (t?.isContentEditable ?? false)) return
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+      event.preventDefault()
+      selectAll(!allSelected)
+    }
   }
 
   function goPrev(): void {
@@ -121,6 +143,7 @@
 </script>
 
 <Toast />
+<svelte:window onkeydown={onKeyDown} />
 
 {#if $authState === 'connected'}
   <main class="shell">
@@ -168,6 +191,7 @@
   <EditorPanel
     photo={editingPhoto}
     onClose={closeEditor}
+    onReject={rejectCurrent}
     onPrev={goPrev}
     onNext={goNext}
     hasPrev={canPrev}

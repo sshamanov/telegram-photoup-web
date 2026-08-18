@@ -8,7 +8,15 @@
 
   onMount(async () => {
     try {
-      dialogs = await getCurrentAdapter().getDialogs()
+      // Fetch a large list so every group the account can reach is cached (a raw
+      // group id only resolves if the peer is in the client's cache, else PEER_ID_INVALID).
+      dialogs = await getCurrentAdapter().getDialogs({ limit: 1000 })
+      // If the persisted target is no longer reachable, drop it rather than send
+      // to an invalid peer.
+      const target = $settings.targetGroupId
+      if (target && !dialogs.some((d) => d.id === target)) {
+        settings.set({ ...$settings, targetGroupId: null })
+      }
     } catch {
       /* ignore — dialogs stay empty */
     }

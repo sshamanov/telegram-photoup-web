@@ -20,8 +20,8 @@ sensor recorded full color. photoup:
 4. For RAW: white balance is camera-as-shot by default, with a manual
    **temperature** slider and a **neutral (gray) picker**.
 5. Lets you **crop** each photo.
-6. Uploads to Telegram at maximum inline quality (resized to ≤2560px,
-   high-quality JPEG, sent as a `photo`).
+6. Uploads to Telegram as an inline photo (resized to ≤2560px, 4:4:4 mozjpeg with
+   adaptive quality — maximum quality that still fits Telegram's ~10 MB photo limit).
 
 ## Features
 
@@ -35,7 +35,8 @@ sensor recorded full color. photoup:
   neutral picker + Crop** for RAW; **Crop** for JPEG; a live **luminance
   histogram** showing tonal distribution (and highlight clipping).
 - **Target group** — remembered across reloads.
-- **Maximum quality** — ≤2560px, high-quality JPEG, inline `photo`.
+- **Maximum quality** — ≤2560px, 4:4:4 mozjpeg with adaptive quality (the highest
+  that still fits Telegram's ~10 MB photo limit), sent as an inline `photo`.
 - **Usage indicator** — live memory/processing status.
 
 ## Tech stack
@@ -45,7 +46,7 @@ sensor recorded full color. photoup:
 | UI          | Svelte 5 + TypeScript (strict) + Vite |
 | Telegram    | `@mtcute/web` (MTProto client), behind an adapter |
 | RAW decode  | `libraw-wasm` (LibRaw WASM → camera-WB 16-bit linear RGB) |
-| Processing  | Browser canvas + Web Worker + `@jsquash/jpeg` (4:4:4 Q100 mozjpeg) |
+| Processing  | Browser canvas + Web Worker + `@jsquash/jpeg` (4:4:4 mozjpeg, adaptive quality) |
 | Persistence | `localStorage` (session + settings) |
 | Build/dev   | Docker (`node:20-alpine`, `--network host`) |
 | Tests       | Playwright + mock Telegram adapter |
@@ -61,15 +62,17 @@ File (JPG/PNG/NEF/CR2)
                both: global auto exposure + mild highlight rolloff (linear space)
   └─ crop ──── optional manual crop (applied at render time)
   └─ output ── thumbnail (≤512px)  → grid preview
-               export (≤2560px, JPEG 4:4:4 Q100) → send as photo
+               export (≤2560px, adaptive 4:4:4 mozjpeg) → send as photo
 ```
 
 ## Processing concept
 
-- **RAW:** decode to 16-bit linear RGB (camera WB + camera color matrix) →
-  [temp / hue / grey picker] → global auto exposure → mild highlight rolloff →
-  camera-"Standard" tone curve → crop → resize ≤2560px → sRGB JPEG.
-- **JPEG:** decode → global auto exposure → mild highlight rolloff → crop →
+- **RAW:** decode to 16-bit linear RGB (camera WB + color matrix) → [WB offset /
+  hue / auto WB / neutral picker] → auto or manual exposure → mild highlight
+  rolloff → camera-"Standard" tone curve → crop → resize ≤2560px → sRGB JPEG.
+  The export bakes the final WB into libraw's `userMul` (pre color matrix, native
+  sensor data); the preview reproduces it via the camera matrix so they match.
+- **JPEG:** decode → auto or manual exposure → mild highlight rolloff → crop →
   resize ≤2560px → JPEG.
 
 The source is decoded once and cached; edits re-render only the thumbnail, and
@@ -89,12 +92,13 @@ src/App.svelte      root
 ## Status
 
 Working end-to-end for JPEG/PNG/RAW: upload → auto-exposure → editor (exposure,
-crop; RAW: temperature + neutral picker) → album send, with Telegram behind a
+WB offset + auto WB + neutral picker, crop) → album send, with Telegram behind a
 mock adapter for tests.
 
 - **RAW decode**: `libraw-wasm` decodes NEF/CR2 to camera-WB 16-bit linear RGB
   (verified against the D810 NEF and Canon CR2 samples).
-- **Export**: 4:4:4 Q100 JPEG (mozjpeg, `chroma_subsample: 1`).
+- **Export**: 4:4:4 mozjpeg with adaptive quality — maximum quality, lowered only
+  to stay under Telegram's ~10 MB photo limit (verified against the live account).
 
 Deferred:
 - **Real-Telegram upload test** (PNG vs JPEG 4:4:4 round-trip) — needs a live
@@ -144,6 +148,9 @@ docker-compose up --build playwright
 - **RAW white balance** uses camera-as-shot values by default (no automatic
   WB); manual correction is via temperature + neutral picker.
 - **JPEG color is never altered** — only exposure + crop.
+- **Exports are capped to Telegram's ~10 MB photo limit** — the encoder keeps the
+  highest quality that fits, but very detailed images are re-compressed (and
+  Telegram re-encodes photos anyway).
 
 ## References
 

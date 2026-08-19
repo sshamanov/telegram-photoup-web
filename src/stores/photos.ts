@@ -11,7 +11,7 @@ import {
   exportWbMul,
   type DecodedBase,
 } from '../lib/image/process'
-import { encodeJpeg444InWorker } from '../lib/image/encode'
+import { encodeJpeg444Adaptive } from '../lib/image/encode'
 import type { UploadPhoto } from '../types/telegram'
 import { pushToast } from './ui'
 import { debugLog } from '../lib/debug'
@@ -333,7 +333,9 @@ export async function renderExports(
       await new Promise((r) => setTimeout(r, 0))
       const ctx = canvas.getContext('2d', { willReadFrequently: true })!
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-      const file = await encodeJpeg444InWorker(imageData, { quality: 100, chroma: 1 })
+      // mozjpeg-optimized encode: maximum quality, lowered only if needed to
+      // stay under Telegram's ~10 MB photo limit.
+      const file = await encodeJpeg444Adaptive(imageData, { chroma: 1 })
       encoded++
       onProgress?.('encode', encoded, total, fileName)
       results[idx] = { file, fileName }

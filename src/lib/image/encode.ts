@@ -34,6 +34,21 @@ export function encodeJpeg444InWorker(
   imageData: ImageData,
   opts: { quality: number; chroma: number },
 ): Promise<Blob> {
+  return rpc(imageData, { chroma: opts.chroma, quality: opts.quality })
+}
+
+/** Encode with mozjpeg optimization; picks the highest quality under maxBytes. */
+export function encodeJpeg444Adaptive(
+  imageData: ImageData,
+  opts: { chroma: number; maxBytes?: number },
+): Promise<Blob> {
+  return rpc(imageData, { chroma: opts.chroma, maxBytes: opts.maxBytes })
+}
+
+function rpc(
+  imageData: ImageData,
+  msg: { chroma: number; quality?: number; maxBytes?: number },
+): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const id = nextId++
     pending.set(id, {
@@ -49,8 +64,9 @@ export function encodeJpeg444InWorker(
         data: buffer,
         width: imageData.width,
         height: imageData.height,
-        quality: opts.quality,
-        chroma: opts.chroma,
+        quality: msg.quality,
+        chroma: msg.chroma,
+        maxBytes: msg.maxBytes,
       },
       [buffer],
     )

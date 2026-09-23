@@ -27,6 +27,7 @@ jobs:
         run: docker run --rm -v "$PWD":/app -w /app node:20-alpine npm run check
 
       - name: Unit tests
+        if: always()
         run: docker run --rm -v "$PWD":/app -w /app node:20-alpine npm run test:unit
 
   ui-tests:

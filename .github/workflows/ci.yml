@@ -2,22 +2,33 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-test:
+  check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
       - name: Build Docker image (static bundle)
         run: docker build -t photoup .
 
-      - name: Type-check in Docker
-        run: docker run --rm -v "$PWD":/app -w /app node:20-alpine sh -c "npm install && npm run check"
+      - name: Type-check and unit tests in Docker
+        run: docker run --rm -v "$PWD":/app -w /app node:20-alpine sh -c "npm install && npm run check && npm run test:unit"
 
-      - name: Unit tests in Docker
-        run: docker run --rm -v "$PWD":/app -w /app node:20-alpine sh -c "npm install && npm run test:unit"
+  ui-tests:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
 
       - name: UI tests in Docker (mock adapter)
         run: docker compose run --rm playwright

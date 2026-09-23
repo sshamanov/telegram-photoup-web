@@ -20,8 +20,14 @@ jobs:
       - name: Build Docker image (static bundle)
         run: docker build -t photoup .
 
-      - name: Type-check and unit tests in Docker
-        run: docker run --rm -v "$PWD":/app -w /app node:20-alpine sh -c "npm install && npm run check && npm run test:unit"
+      - name: Install dependencies
+        run: docker run --rm -v "$PWD":/app -w /app node:20-alpine npm install
+
+      - name: Type-check
+        run: docker run --rm -v "$PWD":/app -w /app node:20-alpine npm run check
+
+      - name: Unit tests
+        run: docker run --rm -v "$PWD":/app -w /app node:20-alpine npm run test:unit
 
   ui-tests:
     if: github.event_name == 'push'

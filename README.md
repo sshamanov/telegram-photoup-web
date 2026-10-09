@@ -141,6 +141,10 @@ VITE_USE_MOCK_ADAPTER=true docker-compose up --build playwright
 
 The UI tests drive the mock adapter, so force it when `.env` holds real credentials.
 
+The real-Telegram tests in `tests/real/` are skipped unless `REAL_TG=1`; they
+read the login phone and target group from `TG_PHONE` / `TG_GROUP` (never
+hard-code personal data in tests).
+
 ## Deployment
 
 Every push to `main` publishes a public image to

@@ -19,7 +19,7 @@ interaction happens in the browser.
 - Browser canvas + Web Worker + `@jsquash/jpeg` — exposure/WB/tone/resize/encode (4:4:4 mozjpeg, adaptive quality to fit Telegram's ~10 MB photo limit)
 - `localStorage` — session + settings persistence
 - Docker (`node:20-alpine`, `--network host`) for all dev/build/test
-- GitHub Actions — CI (build + Playwright tests in Docker)
+- GitHub Actions — CI (build + Playwright tests in Docker) + public GHCR image publish
 - Playwright + mock Telegram adapter — UI tests
 
 ## SYSTEM BOUNDARIES — absolute hard rules
@@ -53,8 +53,8 @@ These rules override everything else. No exceptions.
      node:20-alpine npm run dev -- --host --port 5173
    ```
 
-5. **One server only — the dev server on port 5173.** There is no separate
-   production or preview service. All work and all user-facing verification
+5. **One server only — the dev server on port 5173.** The production Docker
+   image (`Dockerfile`, published to GHCR) is for deployment, not local work. All work and all user-facing verification
    happen against this single dev server. Never start a second server (e.g.
    `vite preview` on another port) — it causes the stale-build confusion.
    If 5173 is in use, kill the process:
@@ -104,6 +104,7 @@ the history reads as a change log. Never use `--no-verify`.
 ## Architecture
 
 ```
+src/lib/config.ts             <- Telegram creds: runtime /config.js, else VITE_* env
 src/lib/telegram/adapter.ts   <- TelegramAdapter interface (only import contract)
 src/lib/telegram/mtcute.ts    <- mtcute implementation
 src/lib/telegram/mock.ts      <- mock for tests/dev
@@ -118,6 +119,7 @@ src/stores/                   <- Svelte writable stores (global state)
 src/components/               <- Svelte components
 src/App.svelte                <- root, screen switching via store
 src/main.ts                   <- entry point
+scripts/serve-dist.mjs        <- prod static server; /config.js from container env
 ```
 
 ## State ownership

@@ -9,25 +9,23 @@ import {
 import { mtcuteAdapter } from '../lib/telegram/mtcute'
 import { mockAdapter } from '../lib/telegram/mock'
 import { pushToast } from './ui'
+import { TELEGRAM_API_HASH, TELEGRAM_API_ID, USE_MOCK_ADAPTER } from '../lib/config'
 
-const hasApiCredentials = Boolean(
-  localStorage.getItem('telegram.apiId') || import.meta.env.VITE_TELEGRAM_API_ID,
-)
+const apiId = TELEGRAM_API_ID || localStorage.getItem('telegram.apiId') || ''
+const apiHash = TELEGRAM_API_HASH || localStorage.getItem('telegram.apiHash') || ''
+const hasApiCredentials = Boolean(apiId)
 
 function envUseMock(): boolean {
-  const value = import.meta.env.VITE_USE_MOCK_ADAPTER
+  const value = USE_MOCK_ADAPTER
   return value === 'true' || value === '1' || value === 'True' || value === 'TRUE'
 }
 
 // Empty counts as unset so docker-compose can pass the variable through blank.
-const envUseMockSet = (import.meta.env.VITE_USE_MOCK_ADAPTER ?? '') !== ''
+const envUseMockSet = USE_MOCK_ADAPTER !== ''
 const useMock = envUseMockSet ? envUseMock() : !hasApiCredentials
 
 setTelegramAdapter(useMock ? mockAdapter : mtcuteAdapter)
-setTelegramApiCredentials(
-  localStorage.getItem('telegram.apiId') ?? import.meta.env.VITE_TELEGRAM_API_ID ?? '',
-  localStorage.getItem('telegram.apiHash') ?? import.meta.env.VITE_TELEGRAM_API_HASH ?? '',
-)
+setTelegramApiCredentials(apiId, apiHash)
 
 export const authState = writable<AuthState>('idle')
 export const phoneCodeHash = writable<string | null>(null)

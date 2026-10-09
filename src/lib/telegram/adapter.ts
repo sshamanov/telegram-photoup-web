@@ -1,4 +1,5 @@
 import type { Dialog, UploadPhoto } from '../../types/telegram'
+import { TELEGRAM_API_HASH, TELEGRAM_API_ID } from '../config'
 
 export interface TelegramAdapter {
   sendCode(phone: string): Promise<{ phoneCodeHash: string }>
@@ -13,8 +14,8 @@ export interface TelegramAdapter {
 }
 
 let currentAdapter: TelegramAdapter | null = null
-let storedApiId = localStorage.getItem('telegram.apiId') ?? import.meta.env.VITE_TELEGRAM_API_ID ?? ''
-let storedApiHash = localStorage.getItem('telegram.apiHash') ?? import.meta.env.VITE_TELEGRAM_API_HASH ?? ''
+let storedApiId = TELEGRAM_API_ID || localStorage.getItem('telegram.apiId') || ''
+let storedApiHash = TELEGRAM_API_HASH || localStorage.getItem('telegram.apiHash') || ''
 
 export function setTelegramAdapter(adapter: TelegramAdapter): void {
   currentAdapter = adapter

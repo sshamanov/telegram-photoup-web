@@ -82,7 +82,9 @@ original decoded source** — never cumulatively from an edited preview.
 ## Project layout
 
 ```
+src/lib/config.ts   Telegram credentials: runtime /config.js, else VITE_* env
 src/lib/telegram/   Telegram adapter (mtcute + mock)
+scripts/serve-dist.mjs  production static server (Docker image)
 src/lib/image/      RAW decode, processing, auto-exposure
 src/stores/         Svelte stores (global state + persistence)
 src/components/     Svelte components
@@ -128,9 +130,8 @@ dev server; a variable exported in the shell overrides the file, e.g.
 docker-compose up app        # http://localhost:5173
 ```
 
-This is the **only** server — there is no separate production/preview service.
-(CI still runs `docker build -t photoup .` as a build gate, but nothing runs a
-second server locally.)
+This is the **only** local server — never run a second (preview) server
+alongside it. The production image below is for deployment.
 
 ### Tests
 
@@ -139,6 +140,32 @@ VITE_USE_MOCK_ADAPTER=true docker-compose up --build playwright
 ```
 
 The UI tests drive the mock adapter, so force it when `.env` holds real credentials.
+
+## Deployment
+
+Every push to `main` publishes a public image to
+`ghcr.io/sshamanov/telegram-photoup-web` (`latest` + short-SHA tags). The image
+contains **no credentials**: a small Node server (`scripts/serve-dist.mjs`)
+serves the static bundle plus a `/config.js` generated from the container
+environment at start-up.
+
+```bash
+docker run -d -p 4173:4173 \
+  -e TELEGRAM_API_ID=... \
+  -e TELEGRAM_API_HASH=... \
+  -e USE_MOCK_ADAPTER=false \
+  ghcr.io/sshamanov/telegram-photoup-web:latest
+```
+
+| Variable            | Default | Meaning |
+|---------------------|---------|---------|
+| `TELEGRAM_API_ID`   | empty   | from https://my.telegram.org |
+| `TELEGRAM_API_HASH` | empty   | from https://my.telegram.org |
+| `USE_MOCK_ADAPTER`  | empty   | `false` = real Telegram, `true` = mock; empty = real if credentials set |
+| `PORT` / `HOST`     | `4173` / `0.0.0.0` | listen address |
+
+Serve it behind an HTTPS reverse proxy. The ID/hash reach every visitor's
+browser — that is inherent to a client-only Telegram app.
 
 ## Persistence
 

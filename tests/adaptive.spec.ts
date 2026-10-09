@@ -1,9 +1,14 @@
 import { test, expect } from '@playwright/test'
+
+// The module is imported by the dev server inside the page, so the specifier is a
+// URL path that tsc cannot resolve; type it from the source file instead.
+type EncodeModule = typeof import('../src/lib/image/encode')
 test('adaptive encode: Q100 when it fits, lowers to fit a budget', async ({ page }) => {
   test.setTimeout(90_000)
   await page.goto('https://localhost:5173/')
   const res = await page.evaluate(async () => {
-    const enc = await import('/src/lib/image/encode.ts')
+    const encodeUrl: string = '/src/lib/image/encode.ts'
+    const enc: EncodeModule = await import(/* @vite-ignore */ encodeUrl)
     // Each call needs a FRESH buffer (the encode transfers/detaches it).
     const mk = () => {
       const c = document.createElement('canvas')
@@ -42,7 +47,8 @@ test('binary search lowers quality to fit a small budget', async ({ page }) => {
   test.setTimeout(90_000)
   await page.goto('https://localhost:5173/')
   const res = await page.evaluate(async () => {
-    const enc = await import('/src/lib/image/encode.ts')
+    const encodeUrl: string = '/src/lib/image/encode.ts'
+    const enc: EncodeModule = await import(/* @vite-ignore */ encodeUrl)
     const mkNoise = () => {
       const c = document.createElement('canvas')
       c.width = 1200

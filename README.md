@@ -164,7 +164,5 @@ The UI tests drive the mock adapter, so force it when `.env` holds real credenti
 
 - Telegram interaction (auth/QR/send/dialogs/adapter pattern):
   <https://github.com/sshamanov/telegram-gallery.git>
-- VLM endpoint usage for image evaluation:
-  `git@github.com:sshamanov/sd-cpu.git`
 - Docker / image-serving patterns:
   `git@github.com:sshamanov/post-server.git`

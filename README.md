@@ -114,7 +114,13 @@ Everything runs in Docker. Prerequisites: Docker on the host (nothing else).
 cp .env.example .env
 # VITE_TELEGRAM_API_ID=...   (from https://my.telegram.org)
 # VITE_TELEGRAM_API_HASH=...
+# VITE_USE_MOCK_ADAPTER=      (blank = auto: real if credentials set, else mock)
 ```
+
+`.env` is gitignored and excluded from the Docker build context. `docker-compose`
+reads it for variable substitution and passes the three `VITE_*` variables to the
+dev server; a variable exported in the shell overrides the file, e.g.
+`VITE_USE_MOCK_ADAPTER=true docker-compose up app`.
 
 ### Development
 
@@ -129,8 +135,10 @@ second server locally.)
 ### Tests
 
 ```bash
-docker-compose up --build playwright
+VITE_USE_MOCK_ADAPTER=true docker-compose up --build playwright
 ```
+
+The UI tests drive the mock adapter, so force it when `.env` holds real credentials.
 
 ## Persistence
 

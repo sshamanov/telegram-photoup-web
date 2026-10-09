@@ -19,7 +19,8 @@ function envUseMock(): boolean {
   return value === 'true' || value === '1' || value === 'True' || value === 'TRUE'
 }
 
-const envUseMockSet = import.meta.env.VITE_USE_MOCK_ADAPTER !== undefined
+// Empty counts as unset so docker-compose can pass the variable through blank.
+const envUseMockSet = (import.meta.env.VITE_USE_MOCK_ADAPTER ?? '') !== ''
 const useMock = envUseMockSet ? envUseMock() : !hasApiCredentials
 
 setTelegramAdapter(useMock ? mockAdapter : mtcuteAdapter)
